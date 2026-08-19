@@ -22,7 +22,7 @@ android {
         externalNativeBuild {
             cmake {
                 arguments += listOf(
-                    "-DANDROID_STL=c++_shared",
+                    "-DANDROID_STL=none",
                     "-DANDROID_ARM_NEON=TRUE",
                 )
                 targets += "alite_ssh"

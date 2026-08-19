@@ -76,7 +76,6 @@ add_library(ssh2 STATIC ${LIBSSH2_SOURCES})
 target_compile_definitions(ssh2 PRIVATE
     HAVE_CONFIG_H
     LIBSSH2_MBEDTLS
-    LIBSSH2_LIBRARY
 )
 target_include_directories(ssh2
     PUBLIC
