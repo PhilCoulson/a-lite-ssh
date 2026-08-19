@@ -3,18 +3,35 @@ package com.alite.ssh
 import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.content.res.ColorStateList
 import android.os.Build
 import android.os.Bundle
 import android.view.LayoutInflater
-import android.view.View
-import android.widget.Toast
+import android.view.Menu
+import android.view.MenuItem
+import android.widget.ScrollView
+import android.widget.TextView
+import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import androidx.core.content.edit
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.isVisible
+import androidx.core.view.updatePadding
+import androidx.core.widget.ImageViewCompat
 import androidx.core.widget.doAfterTextChanged
 import com.alite.ssh.databinding.ActivityMainBinding
+import com.alite.ssh.databinding.DialogAddMappingBinding
+import com.alite.ssh.databinding.DialogAdvancedBinding
 import com.alite.ssh.databinding.ItemPortMappingBinding
+import com.alite.ssh.databinding.SheetLogsBinding
+import com.google.android.material.bottomsheet.BottomSheetBehavior
+import com.google.android.material.bottomsheet.BottomSheetDialog
+import com.google.android.material.dialog.MaterialAlertDialogBuilder
+import com.google.android.material.snackbar.Snackbar
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -28,20 +45,48 @@ class MainActivity : AppCompatActivity(), TunnelHub.Observer {
         ActivityResultContracts.RequestPermission(),
     ) { }
 
+    private var trustOnFirstUse = true
+    private var ignoreHostKeyMismatch = false
+    private var lastUiState: String? = null
+    private var logViewRef: TextView? = null
+    private var logScrollRef: ScrollView? = null
+
     override fun onCreate(savedInstanceState: Bundle?) {
+        enableEdgeToEdge()
         super.onCreate(savedInstanceState)
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
         setSupportActionBar(binding.toolbar)
+        applyWindowInsets()
         restoreForm()
         updateAuthFields()
         renderMappings()
+        applyStatus(TunnelHub.snapshot())
 
-        binding.authGroup.setOnCheckedChangeListener { _, _ -> updateAuthFields() }
+        binding.authGroup.addOnButtonCheckedListener { _, _, _ -> updateAuthFields() }
         binding.connectButton.setOnClickListener { toggleTunnel() }
-        binding.addMappingButton.setOnClickListener { addMapping() }
+        binding.addMappingButton.setOnClickListener { showAddMappingDialog() }
         binding.hostInput.doAfterTextChanged { renderMappings() }
         requestNotificationPermission()
+    }
+
+    override fun onCreateOptionsMenu(menu: Menu): Boolean {
+        menuInflater.inflate(R.menu.home, menu)
+        return true
+    }
+
+    override fun onOptionsItemSelected(item: MenuItem): Boolean {
+        return when (item.itemId) {
+            R.id.action_logs -> {
+                showLogs()
+                true
+            }
+            R.id.action_advanced -> {
+                showAdvanced()
+                true
+            }
+            else -> super.onOptionsItemSelected(item)
+        }
     }
 
     override fun onStart() {
@@ -54,27 +99,23 @@ class MainActivity : AppCompatActivity(), TunnelHub.Observer {
         super.onStop()
     }
 
-    private var lastUiState: String? = null
-
     override fun onTunnelEvent(snapshot: TunnelHub.Snapshot) {
         runOnUiThread {
-            val running = isRunningState(snapshot.state)
-            binding.connectButton.text = getString(
-                if (running) R.string.action_disconnect else R.string.action_connect,
-            )
-            binding.statusText.text = getString(R.string.status_fmt, snapshot.state)
-            binding.logView.text = snapshot.logs.joinToString("\n")
-            binding.logScroll.post { binding.logScroll.fullScroll(View.FOCUS_DOWN) }
+            applyStatus(snapshot)
+            updateLogSheet(snapshot)
             if (snapshot.state != lastUiState) {
+                if (snapshot.state == "error" && lastUiState != null) {
+                    snack(R.string.err_connect_failed, R.string.log_title) { showLogs() }
+                }
                 lastUiState = snapshot.state
-                setSshFormEnabled(!running)
+                updateAuthFields()
                 renderMappings()
             }
         }
     }
 
     private fun toggleTunnel() {
-        if (isRunningState(TunnelHub.state)) {
+        if (isBusyState(TunnelHub.state)) {
             startService(
                 Intent(this, SshTunnelService::class.java).setAction(SshTunnelService.ACTION_STOP),
             )
@@ -92,48 +133,33 @@ class MainActivity : AppCompatActivity(), TunnelHub.Observer {
         )
     }
 
-    private fun addMapping() {
-        if (mappings.size >= MAX_MAPPINGS) {
-            Toast.makeText(this, R.string.err_too_many_mappings, Toast.LENGTH_SHORT).show()
-            return
-        }
-        val local = binding.newLocalPortInput.text.toString().toIntOrNull()
-        val remote = binding.newRemotePortInput.text.toString().toIntOrNull()
-        if (local == null || remote == null || local !in 1..65535 || remote !in 1..65535) {
-            Toast.makeText(this, R.string.err_bad_port, Toast.LENGTH_SHORT).show()
-            return
-        }
-        if (mappings.any { it.localPort == local }) {
-            Toast.makeText(this, R.string.err_dup_local_port, Toast.LENGTH_SHORT).show()
-            return
-        }
-        mappings.add(PortMapping(localPort = local, remotePort = remote, enabled = true))
-        persistForm()
-        renderMappings()
-        pushForwardsIfRunning()
-    }
-
     private fun readForm(): TunnelConfig? {
         val host = binding.hostInput.text.toString().trim()
         val username = binding.userInput.text.toString().trim()
         val sshPort = binding.portInput.text.toString().toIntOrNull() ?: 22
+        binding.hostLayout.error = if (host.isEmpty()) getString(R.string.err_required_host) else null
+        binding.userLayout.error = if (username.isEmpty()) getString(R.string.err_required_user) else null
         if (host.isEmpty() || username.isEmpty()) {
-            Toast.makeText(this, R.string.err_required, Toast.LENGTH_SHORT).show()
+            if (host.isEmpty()) binding.hostInput.requestFocus() else binding.userInput.requestFocus()
             return null
         }
         if (mappings.none { it.enabled }) {
-            Toast.makeText(this, R.string.err_need_mapping, Toast.LENGTH_SHORT).show()
+            snack(R.string.err_need_mapping)
             return null
         }
         val useKey = binding.authKey.isChecked
         val password = binding.passwordInput.text.toString().ifEmpty { null }
         val privateKey = binding.keyInput.text.toString().ifEmpty { null }
+        binding.passwordLayout.error = null
+        binding.keyLayout.error = null
         if (useKey && privateKey.isNullOrBlank()) {
-            Toast.makeText(this, R.string.err_need_key, Toast.LENGTH_SHORT).show()
+            binding.keyLayout.error = getString(R.string.err_need_key)
+            binding.keyInput.requestFocus()
             return null
         }
         if (!useKey && password.isNullOrEmpty()) {
-            Toast.makeText(this, R.string.err_need_password, Toast.LENGTH_SHORT).show()
+            binding.passwordLayout.error = getString(R.string.err_need_password)
+            binding.passwordInput.requestFocus()
             return null
         }
         return TunnelConfig(
@@ -144,8 +170,8 @@ class MainActivity : AppCompatActivity(), TunnelHub.Observer {
             privateKey = if (useKey) privateKey else null,
             passphrase = binding.passphraseInput.text.toString().ifEmpty { null },
             mappings = mappings.toList(),
-            trustOnFirstUse = binding.tofuCheck.isChecked,
-            ignoreHostKeyMismatch = binding.skipMismatchCheck.isChecked,
+            trustOnFirstUse = trustOnFirstUse,
+            ignoreHostKeyMismatch = ignoreHostKeyMismatch,
         )
     }
 
@@ -156,8 +182,8 @@ class MainActivity : AppCompatActivity(), TunnelHub.Observer {
             putString(KEY_USER, binding.userInput.text.toString())
             putBoolean(KEY_USE_KEY, binding.authKey.isChecked)
             putString(KEY_MAPPINGS, encodeMappings(mappings))
-            putBoolean(KEY_TOFU, binding.tofuCheck.isChecked)
-            putBoolean(KEY_SKIP, binding.skipMismatchCheck.isChecked)
+            putBoolean(KEY_TOFU, trustOnFirstUse)
+            putBoolean(KEY_SKIP, ignoreHostKeyMismatch)
         }
     }
 
@@ -166,25 +192,27 @@ class MainActivity : AppCompatActivity(), TunnelHub.Observer {
         binding.hostInput.setText(p.getString(KEY_HOST, ""))
         binding.portInput.setText(p.getString(KEY_PORT, "22"))
         binding.userInput.setText(p.getString(KEY_USER, ""))
-        binding.tofuCheck.isChecked = p.getBoolean(KEY_TOFU, true)
-        binding.skipMismatchCheck.isChecked = p.getBoolean(KEY_SKIP, false)
-        if (p.getBoolean(KEY_USE_KEY, false)) {
-            binding.authKey.isChecked = true
-        } else {
-            binding.authPassword.isChecked = true
-        }
+        trustOnFirstUse = p.getBoolean(KEY_TOFU, true)
+        ignoreHostKeyMismatch = p.getBoolean(KEY_SKIP, false)
+        binding.authGroup.check(
+            if (p.getBoolean(KEY_USE_KEY, false)) R.id.authKey else R.id.authPassword,
+        )
         mappings.clear()
         mappings.addAll(decodeMappings(p.getString(KEY_MAPPINGS, null), p))
     }
 
     private fun renderMappings() {
         val host = binding.hostInput.text?.toString()?.trim().orEmpty()
-        val running = isRunningState(TunnelHub.state)
-        binding.mappingList.removeAllViews()
         val inflater = LayoutInflater.from(this)
+        binding.mappingEmpty.isVisible = mappings.isEmpty()
+        binding.mappingList.isVisible = mappings.isNotEmpty()
+        binding.mappingList.removeAllViews()
         mappings.toList().forEach { mapping ->
             val row = ItemPortMappingBinding.inflate(inflater, binding.mappingList, false)
-            row.mappingText.text = mapping.display(host)
+            row.localPortView.text = mapping.localPort.toString()
+            row.remotePortView.text = mapping.remotePort.toString()
+            row.remoteCaption.text = host.ifBlank { getString(R.string.mapping_remote_caption) }
+            row.root.alpha = if (mapping.enabled) 1f else 0.55f
             row.enableSwitch.setOnCheckedChangeListener(null)
             row.enableSwitch.isChecked = mapping.enabled
             row.enableSwitch.setOnCheckedChangeListener { _, checked ->
@@ -194,27 +222,195 @@ class MainActivity : AppCompatActivity(), TunnelHub.Observer {
                     persistForm()
                     renderMappings()
                     pushForwardsIfRunning()
+                    if (isBusyState(TunnelHub.state) && mappings.none { it.enabled }) {
+                        snack(R.string.warn_no_enabled_mapping)
+                    }
                 }
             }
-            row.openButton.isEnabled = running && mapping.enabled
-            row.openButton.setOnClickListener {
-                startActivity(
-                    Intent(this, BrowserActivity::class.java)
-                        .putExtra(BrowserActivity.EXTRA_PORT, mapping.localPort),
-                )
-            }
-            row.deleteButton.setOnClickListener {
-                mappings.removeAll { it.id == mapping.id }
-                persistForm()
-                renderMappings()
-                pushForwardsIfRunning()
-            }
+            row.openButton.setOnClickListener { openMapping(mapping) }
+            row.deleteButton.setOnClickListener { confirmDelete(mapping) }
             binding.mappingList.addView(row.root)
         }
     }
 
+    private fun openMapping(mapping: PortMapping) {
+        when {
+            !isConnectedState(TunnelHub.state) -> snack(R.string.err_open_need_connect)
+            !mapping.enabled -> snack(R.string.err_open_need_enable)
+            else -> startActivity(
+                Intent(this, BrowserActivity::class.java)
+                    .putExtra(BrowserActivity.EXTRA_PORT, mapping.localPort),
+            )
+        }
+    }
+
+    private fun confirmDelete(mapping: PortMapping) {
+        val host = binding.hostInput.text?.toString()?.trim().orEmpty()
+        val summary = mapping.display(host)
+        val message = buildString {
+            append(summary)
+            if (isBusyState(TunnelHub.state)) {
+                append("\n\n")
+                append(getString(R.string.delete_mapping_running))
+            }
+        }
+        MaterialAlertDialogBuilder(this)
+            .setTitle(R.string.delete_mapping_title)
+            .setMessage(message)
+            .setNegativeButton(R.string.action_cancel, null)
+            .setPositiveButton(R.string.action_delete) { _, _ ->
+                mappings.removeAll { it.id == mapping.id }
+                persistForm()
+                renderMappings()
+                pushForwardsIfRunning()
+                snack(R.string.msg_mapping_deleted)
+            }
+            .show()
+    }
+
+    private fun showAddMappingDialog() {
+        if (mappings.size >= MAX_MAPPINGS) {
+            snack(R.string.err_too_many_mappings)
+            return
+        }
+        val view = DialogAddMappingBinding.inflate(layoutInflater)
+        view.localPortInput.setText(suggestedLocalPort().toString())
+        view.remotePortInput.setText(suggestedRemotePort().toString())
+        val dialog = MaterialAlertDialogBuilder(this)
+            .setTitle(R.string.action_add_mapping)
+            .setView(view.root)
+            .setNegativeButton(R.string.action_cancel, null)
+            .setPositiveButton(R.string.action_add, null)
+            .create()
+        dialog.setOnShowListener {
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+                val local = view.localPortInput.text.toString().toIntOrNull()
+                val remote = view.remotePortInput.text.toString().toIntOrNull()
+                view.localPortLayout.error = null
+                view.remotePortLayout.error = null
+                if (local == null || local !in 1..65535) {
+                    view.localPortLayout.error = getString(R.string.err_bad_port)
+                    return@setOnClickListener
+                }
+                if (remote == null || remote !in 1..65535) {
+                    view.remotePortLayout.error = getString(R.string.err_bad_port)
+                    return@setOnClickListener
+                }
+                if (mappings.any { it.localPort == local }) {
+                    view.localPortLayout.error = getString(R.string.err_dup_local_port)
+                    return@setOnClickListener
+                }
+                mappings.add(PortMapping(localPort = local, remotePort = remote, enabled = true))
+                persistForm()
+                renderMappings()
+                pushForwardsIfRunning()
+                dialog.dismiss()
+                snack(getString(R.string.msg_mapping_added, local, remote))
+            }
+        }
+        dialog.show()
+        view.localPortInput.requestFocus()
+    }
+
+    private fun showAdvanced() {
+        val view = DialogAdvancedBinding.inflate(layoutInflater)
+        val connected = isBusyState(TunnelHub.state)
+        view.tofuSwitch.isChecked = trustOnFirstUse
+        view.skipMismatchSwitch.isChecked = ignoreHostKeyMismatch
+        view.tofuSwitch.isEnabled = !connected
+        view.skipMismatchSwitch.isEnabled = !connected
+        MaterialAlertDialogBuilder(this)
+            .setTitle(R.string.advanced_title)
+            .setView(view.root)
+            .setNegativeButton(R.string.action_cancel, null)
+            .setPositiveButton(R.string.action_save) { _, _ ->
+                if (!connected) {
+                    trustOnFirstUse = view.tofuSwitch.isChecked
+                    ignoreHostKeyMismatch = view.skipMismatchSwitch.isChecked
+                    persistForm()
+                }
+            }
+            .show()
+    }
+
+    private fun showLogs() {
+        val dialog = BottomSheetDialog(this)
+        val sheet = SheetLogsBinding.inflate(layoutInflater)
+        dialog.setContentView(sheet.root)
+        logViewRef = sheet.logView
+        logScrollRef = sheet.logScroll
+        updateLogSheet(TunnelHub.snapshot())
+        sheet.clearLogsButton.setOnClickListener { TunnelHub.resetLogs() }
+        dialog.setOnDismissListener {
+            logViewRef = null
+            logScrollRef = null
+        }
+        dialog.behavior.skipCollapsed = true
+        dialog.behavior.state = BottomSheetBehavior.STATE_EXPANDED
+        dialog.show()
+    }
+
+    private fun updateLogSheet(snapshot: TunnelHub.Snapshot) {
+        val view = logViewRef ?: return
+        view.text = snapshot.logs.joinToString("\n").ifBlank { getString(R.string.log_empty) }
+        logScrollRef?.post { logScrollRef?.fullScroll(ScrollView.FOCUS_DOWN) }
+    }
+
+    private fun applyStatus(snapshot: TunnelHub.Snapshot) {
+        val phase = uiPhase(snapshot.state)
+        binding.connectProgress.isVisible = phase == UiPhase.Connecting
+        binding.connectButton.text = when (phase) {
+            UiPhase.Connected -> getString(R.string.action_disconnect)
+            UiPhase.Connecting -> getString(R.string.action_cancel_connect)
+            UiPhase.Error -> getString(R.string.action_retry)
+            UiPhase.Idle -> getString(R.string.action_connect)
+        }
+        binding.heroStatusTitle.text = when (snapshot.state) {
+            "connecting" -> getString(R.string.hero_connecting_title)
+            "authenticating" -> getString(R.string.hero_auth_title)
+            "listening" -> getString(R.string.hero_connected_title)
+            "error" -> getString(R.string.hero_error_title)
+            else -> getString(R.string.hero_idle_title)
+        }
+        binding.heroStatusSubtitle.text = when (snapshot.state) {
+            "connecting" -> getString(R.string.hero_connecting_subtitle)
+            "authenticating" -> getString(R.string.hero_auth_subtitle)
+            "listening" -> getString(R.string.hero_connected_subtitle)
+            "error" -> getString(R.string.hero_error_subtitle)
+            else -> getString(R.string.hero_idle_subtitle)
+        }
+        val cfg = snapshot.config
+        val showMeta = phase == UiPhase.Connected && cfg != null
+        binding.heroMeta.isVisible = showMeta
+        if (showMeta && cfg != null) {
+            binding.heroMeta.text = getString(
+                R.string.hero_meta_connected,
+                "${cfg.username}@${cfg.host}",
+                cfg.enabledMappings().size,
+            )
+        }
+        val heroBg = when (phase) {
+            UiPhase.Connected -> R.color.hero_connected_bg
+            UiPhase.Connecting -> R.color.hero_connecting_bg
+            UiPhase.Error -> R.color.hero_error_bg
+            UiPhase.Idle -> R.color.hero_idle_bg
+        }
+        val dot = when (phase) {
+            UiPhase.Connected -> R.color.status_connected
+            UiPhase.Connecting -> R.color.status_connecting
+            UiPhase.Error -> R.color.status_error
+            UiPhase.Idle -> R.color.status_idle
+        }
+        binding.heroCard.setCardBackgroundColor(ContextCompat.getColor(this, heroBg))
+        ImageViewCompat.setImageTintList(
+            binding.heroStatusDot,
+            ColorStateList.valueOf(ContextCompat.getColor(this, dot)),
+        )
+        setSshFormEnabled(phase == UiPhase.Idle || phase == UiPhase.Error)
+    }
+
     private fun pushForwardsIfRunning() {
-        if (!isRunningState(TunnelHub.state)) {
+        if (!isBusyState(TunnelHub.state)) {
             return
         }
         val current = TunnelHub.config ?: return
@@ -226,9 +422,10 @@ class MainActivity : AppCompatActivity(), TunnelHub.Observer {
 
     private fun updateAuthFields() {
         val key = binding.authKey.isChecked
-        binding.passwordLayout.visibility = if (key) View.GONE else View.VISIBLE
-        binding.keyLayout.visibility = if (key) View.VISIBLE else View.GONE
-        binding.passphraseLayout.visibility = if (key) View.VISIBLE else View.GONE
+        val hideSecrets = uiPhase(TunnelHub.state) == UiPhase.Connected
+        binding.passwordLayout.isVisible = !key && !hideSecrets
+        binding.keyLayout.isVisible = key && !hideSecrets
+        binding.passphraseLayout.isVisible = key && !hideSecrets
     }
 
     private fun setSshFormEnabled(enabled: Boolean) {
@@ -240,8 +437,51 @@ class MainActivity : AppCompatActivity(), TunnelHub.Observer {
         binding.passphraseInput.isEnabled = enabled
         binding.authPassword.isEnabled = enabled
         binding.authKey.isEnabled = enabled
-        binding.tofuCheck.isEnabled = enabled
-        binding.skipMismatchCheck.isEnabled = enabled
+        binding.authGroup.isEnabled = enabled
+        binding.hostLayout.isEnabled = enabled
+        binding.portLayout.isEnabled = enabled
+        binding.userLayout.isEnabled = enabled
+        binding.passwordLayout.isEnabled = enabled
+        binding.keyLayout.isEnabled = enabled
+        binding.passphraseLayout.isEnabled = enabled
+    }
+
+    private fun suggestedLocalPort(): Int {
+        val used = mappings.map { it.localPort }.toSet()
+        var port = 8080
+        while (port in used && port < 65535) {
+            port++
+        }
+        return port
+    }
+
+    private fun suggestedRemotePort(): Int = mappings.lastOrNull()?.remotePort ?: 80
+
+    private fun applyWindowInsets() {
+        ViewCompat.setOnApplyWindowInsetsListener(binding.appBar) { v, insets ->
+            val status = insets.getInsets(WindowInsetsCompat.Type.statusBars())
+            v.updatePadding(top = status.top)
+            insets
+        }
+        ViewCompat.setOnApplyWindowInsetsListener(binding.scroll) { v, insets ->
+            val bars = insets.getInsets(
+                WindowInsetsCompat.Type.navigationBars() or WindowInsetsCompat.Type.ime(),
+            )
+            v.updatePadding(bottom = bars.bottom)
+            insets
+        }
+    }
+
+    private fun snack(message: Int, action: Int? = null, onAction: (() -> Unit)? = null) {
+        val bar = Snackbar.make(binding.coordinator, message, Snackbar.LENGTH_LONG)
+        if (action != null && onAction != null) {
+            bar.setAction(action) { onAction() }
+        }
+        bar.show()
+    }
+
+    private fun snack(message: String) {
+        Snackbar.make(binding.coordinator, message, Snackbar.LENGTH_LONG).show()
     }
 
     private fun requestNotificationPermission() {
@@ -256,6 +496,8 @@ class MainActivity : AppCompatActivity(), TunnelHub.Observer {
 
     private fun prefs() = getSharedPreferences("form", MODE_PRIVATE)
 
+    private enum class UiPhase { Idle, Connecting, Connected, Error }
+
     companion object {
         private const val KEY_HOST = "host"
         private const val KEY_PORT = "port"
@@ -268,8 +510,17 @@ class MainActivity : AppCompatActivity(), TunnelHub.Observer {
         private const val KEY_SKIP = "skip"
         private const val MAX_MAPPINGS = 16
 
-        private fun isRunningState(state: String) =
+        private fun uiPhase(state: String): UiPhase = when (state) {
+            "connecting", "authenticating" -> UiPhase.Connecting
+            "listening" -> UiPhase.Connected
+            "error" -> UiPhase.Error
+            else -> UiPhase.Idle
+        }
+
+        private fun isBusyState(state: String) =
             state == "connecting" || state == "authenticating" || state == "listening"
+
+        private fun isConnectedState(state: String) = state == "listening"
 
         fun encodeMappings(items: List<PortMapping>): String =
             items.joinToString(";") { "${it.localPort}:${it.remotePort}:${if (it.enabled) 1 else 0}:${it.id}" }

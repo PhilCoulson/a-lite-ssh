@@ -1,4 +1,27 @@
 <resources>
-    <color name="md_seed">#0B57D0</color>
-    <color name="md_on_seed">#FFFFFF</color>
+    <color name="seed">#1E7FA8</color>
+    <color name="seed_dark">#156A8F</color>
+    <color name="on_seed">#FFFFFF</color>
+
+    <color name="page_background">#F4F7F9</color>
+    <color name="surface">#FFFFFF</color>
+    <color name="surface_container">#EEF2F5</color>
+    <color name="on_surface">#142026</color>
+    <color name="on_surface_variant">#5B6B75</color>
+    <color name="outline">#C9D4DB</color>
+    <color name="outline_variant">#E3EAEE</color>
+    <color name="chip_bg">#14000000</color>
+
+    <color name="status_idle">#6B7280</color>
+    <color name="status_connecting">#1E7FA8</color>
+    <color name="status_connected">#1B8A5A</color>
+    <color name="status_error">#C62828</color>
+
+    <color name="hero_connected_bg">#E8F6F0</color>
+    <color name="hero_idle_bg">#EEF2F5</color>
+    <color name="hero_error_bg">#FDECEC</color>
+    <color name="hero_connecting_bg">#E7F3F8</color>
+
+    <color name="log_surface">#0F1720</color>
+    <color name="log_text">#D7E3EC</color>
 </resources>

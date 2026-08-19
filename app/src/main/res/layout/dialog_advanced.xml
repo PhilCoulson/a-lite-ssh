@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:paddingTop="8dp">
+
+    <com.google.android.material.materialswitch.MaterialSwitch
+        android:id="@+id/tofuSwitch"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:checked="true"
+        android:text="@string/tofu" />
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="4dp"
+        android:layout_marginBottom="12dp"
+        android:text="@string/tofu_helper"
+        android:textAppearance="@style/TextAppearance.Material3.BodySmall"
+        android:textColor="@color/on_surface_variant" />
+
+    <com.google.android.material.materialswitch.MaterialSwitch
+        android:id="@+id/skipMismatchSwitch"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="@string/skip_mismatch" />
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="4dp"
+        android:text="@string/skip_mismatch_helper"
+        android:textAppearance="@style/TextAppearance.Material3.BodySmall"
+        android:textColor="@color/on_surface_variant" />
+</LinearLayout>

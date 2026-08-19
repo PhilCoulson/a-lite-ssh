@@ -1,0 +1,27 @@
+<resources>
+    <style name="Theme.ALiteSsh" parent="Theme.Material3.DayNight.NoActionBar">
+        <item name="colorPrimary">@color/seed</item>
+        <item name="colorOnPrimary">@color/on_seed</item>
+        <item name="colorPrimaryContainer">@color/hero_connecting_bg</item>
+        <item name="colorOnPrimaryContainer">@color/on_surface</item>
+        <item name="colorSecondary">@color/seed</item>
+        <item name="colorOnSecondary">@color/on_seed</item>
+        <item name="colorError">@color/status_error</item>
+        <item name="android:colorBackground">@color/page_background</item>
+        <item name="android:windowBackground">@color/page_background</item>
+        <item name="colorOnBackground">@color/on_surface</item>
+        <item name="colorSurface">@color/surface</item>
+        <item name="colorOnSurface">@color/on_surface</item>
+        <item name="colorSurfaceVariant">@color/surface_container</item>
+        <item name="colorOnSurfaceVariant">@color/on_surface_variant</item>
+        <item name="colorOutline">@color/outline</item>
+        <item name="colorOutlineVariant">@color/outline_variant</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="materialAlertDialogTheme">@style/ThemeOverlay.ALiteSsh.Dialog</item>
+        <item name="materialCardViewStyle">@style/Widget.ALiteSsh.Card</item>
+        <item name="textInputStyle">@style/Widget.ALiteSsh.TextInputLayout</item>
+        <item name="bottomSheetDialogTheme">@style/ThemeOverlay.ALiteSsh.BottomSheet</item>
+    </style>
+</resources>

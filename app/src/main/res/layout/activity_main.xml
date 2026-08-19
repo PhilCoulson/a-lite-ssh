@@ -1,76 +1,199 @@
 <?xml version="1.0" encoding="utf-8"?>
 <androidx.coordinatorlayout.widget.CoordinatorLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:id="@+id/coordinator"
     android:layout_width="match_parent"
-    android:layout_height="match_parent">
+    android:layout_height="match_parent"
+    android:background="@color/page_background">
 
     <com.google.android.material.appbar.AppBarLayout
+        android:id="@+id/appBar"
         android:layout_width="match_parent"
-        android:layout_height="wrap_content">
+        android:layout_height="wrap_content"
+        android:background="@color/page_background"
+        app:elevation="0dp"
+        app:liftOnScroll="true"
+        app:liftOnScrollColor="@color/surface">
 
         <com.google.android.material.appbar.MaterialToolbar
             android:id="@+id/toolbar"
             android:layout_width="match_parent"
             android:layout_height="?attr/actionBarSize"
-            app:title="@string/app_name" />
+            app:title="@string/app_name"
+            app:titleTextAppearance="@style/TextAppearance.Material3.TitleLarge" />
     </com.google.android.material.appbar.AppBarLayout>
 
     <androidx.core.widget.NestedScrollView
+        android:id="@+id/scroll"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
+        android:clipToPadding="false"
+        android:fillViewport="true"
         app:layout_behavior="@string/appbar_scrolling_view_behavior">
 
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="vertical"
-            android:padding="16dp">
+            android:paddingStart="@dimen/screen_padding"
+            android:paddingTop="8dp"
+            android:paddingEnd="@dimen/screen_padding"
+            android:paddingBottom="28dp">
 
             <com.google.android.material.card.MaterialCardView
+                android:id="@+id/heroCard"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                app:cardElevation="1dp"
-                app:contentPadding="16dp">
+                android:minHeight="@dimen/hero_min_height"
+                app:cardBackgroundColor="@color/hero_idle_bg"
+                app:cardCornerRadius="24dp"
+                app:strokeWidth="0dp">
 
                 <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:orientation="vertical">
 
+                    <com.google.android.material.progressindicator.LinearProgressIndicator
+                        android:id="@+id/connectProgress"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:indeterminate="true"
+                        android:visibility="gone"
+                        app:indicatorColor="@color/seed"
+                        app:trackCornerRadius="0dp"
+                        tools:visibility="visible" />
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical"
+                        android:padding="20dp">
+
+                        <LinearLayout
+                            android:id="@+id/heroStatusChip"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:background="@drawable/bg_chip"
+                            android:gravity="center_vertical"
+                            android:orientation="horizontal"
+                            android:paddingStart="10dp"
+                            android:paddingTop="4dp"
+                            android:paddingEnd="12dp"
+                            android:paddingBottom="4dp">
+
+                            <ImageView
+                                android:id="@+id/heroStatusDot"
+                                android:layout_width="8dp"
+                                android:layout_height="8dp"
+                                android:contentDescription="@string/cd_status"
+                                android:src="@drawable/bg_status_dot"
+                                app:tint="@color/status_idle" />
+
+                            <TextView
+                                android:id="@+id/heroStatusTitle"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:layout_marginStart="8dp"
+                                android:text="@string/hero_idle_title"
+                                android:textAppearance="@style/TextAppearance.Material3.LabelLarge"
+                                android:textColor="@color/on_surface" />
+                        </LinearLayout>
+
+                        <TextView
+                            android:id="@+id/heroStatusSubtitle"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="12dp"
+                            android:text="@string/hero_idle_subtitle"
+                            android:textAppearance="@style/TextAppearance.ALiteSsh.HeroTitle" />
+
+                        <TextView
+                            android:id="@+id/heroMeta"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="6dp"
+                            android:textAppearance="@style/TextAppearance.Material3.BodyMedium"
+                            android:textColor="@color/on_surface_variant"
+                            android:visibility="gone"
+                            tools:text="root@example.com · 2 组转发"
+                            tools:visibility="visible" />
+
+                        <com.google.android.material.button.MaterialButton
+                            android:id="@+id/connectButton"
+                            style="@style/Widget.ALiteSsh.Button.Filled"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="18dp"
+                            android:text="@string/action_connect"
+                            app:icon="@drawable/ic_lock"
+                            app:iconGravity="textStart"
+                            app:iconPadding="8dp" />
+                    </LinearLayout>
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+
+            <com.google.android.material.card.MaterialCardView
+                android:id="@+id/sshCard"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="@dimen/card_gap">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:padding="18dp">
+
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:text="@string/ssh_group_title"
-                        android:textAppearance="?attr/textAppearanceTitleMedium" />
+                        android:textAppearance="@style/TextAppearance.ALiteSsh.Section" />
 
-                    <com.google.android.material.textfield.TextInputLayout
+                    <LinearLayout
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:layout_marginTop="12dp"
-                        android:hint="@string/host">
+                        android:orientation="horizontal">
 
-                        <com.google.android.material.textfield.TextInputEditText
-                            android:id="@+id/hostInput"
-                            android:layout_width="match_parent"
+                        <com.google.android.material.textfield.TextInputLayout
+                            android:id="@+id/hostLayout"
+                            android:layout_width="0dp"
                             android:layout_height="wrap_content"
-                            android:inputType="textUri" />
-                    </com.google.android.material.textfield.TextInputLayout>
+                            android:layout_weight="1"
+                            android:hint="@string/host">
+
+                            <com.google.android.material.textfield.TextInputEditText
+                                android:id="@+id/hostInput"
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:imeOptions="actionNext"
+                                android:inputType="textUri|textNoSuggestions"
+                                android:maxLines="1" />
+                        </com.google.android.material.textfield.TextInputLayout>
+
+                        <com.google.android.material.textfield.TextInputLayout
+                            android:id="@+id/portLayout"
+                            android:layout_width="104dp"
+                            android:layout_height="wrap_content"
+                            android:layout_marginStart="8dp"
+                            android:hint="@string/port">
+
+                            <com.google.android.material.textfield.TextInputEditText
+                                android:id="@+id/portInput"
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:imeOptions="actionNext"
+                                android:inputType="number"
+                                android:maxLines="1"
+                                android:text="22" />
+                        </com.google.android.material.textfield.TextInputLayout>
+                    </LinearLayout>
 
                     <com.google.android.material.textfield.TextInputLayout
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="8dp"
-                        android:hint="@string/port">
-
-                        <com.google.android.material.textfield.TextInputEditText
-                            android:id="@+id/portInput"
-                            android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
-                            android:inputType="number"
-                            android:text="22" />
-                    </com.google.android.material.textfield.TextInputLayout>
-
-                    <com.google.android.material.textfield.TextInputLayout
+                        android:id="@+id/userLayout"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:layout_marginTop="8dp"
@@ -80,41 +203,53 @@
                             android:id="@+id/userInput"
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"
-                            android:inputType="textNoSuggestions" />
+                            android:autofillHints="username"
+                            android:imeOptions="actionNext"
+                            android:inputType="textNoSuggestions"
+                            android:maxLines="1" />
                     </com.google.android.material.textfield.TextInputLayout>
 
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:layout_marginTop="12dp"
+                        android:layout_marginTop="14dp"
                         android:text="@string/auth"
-                        android:textAppearance="?attr/textAppearanceTitleSmall" />
+                        android:textAppearance="@style/TextAppearance.Material3.LabelLarge"
+                        android:textColor="@color/on_surface_variant" />
 
-                    <RadioGroup
+                    <com.google.android.material.button.MaterialButtonToggleGroup
                         android:id="@+id/authGroup"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:orientation="horizontal">
+                        android:layout_marginTop="8dp"
+                        app:checkedButton="@id/authPassword"
+                        app:selectionRequired="true"
+                        app:singleSelection="true">
 
-                        <RadioButton
+                        <com.google.android.material.button.MaterialButton
                             android:id="@+id/authPassword"
-                            android:layout_width="wrap_content"
+                            style="@style/Widget.Material3.Button.OutlinedButton"
+                            android:layout_width="0dp"
                             android:layout_height="wrap_content"
-                            android:checked="true"
-                            android:text="@string/auth_password" />
+                            android:layout_weight="1"
+                            android:text="@string/auth_password"
+                            app:icon="@drawable/ic_lock" />
 
-                        <RadioButton
+                        <com.google.android.material.button.MaterialButton
                             android:id="@+id/authKey"
-                            android:layout_width="wrap_content"
+                            style="@style/Widget.Material3.Button.OutlinedButton"
+                            android:layout_width="0dp"
                             android:layout_height="wrap_content"
-                            android:layout_marginStart="16dp"
-                            android:text="@string/auth_key" />
-                    </RadioGroup>
+                            android:layout_weight="1"
+                            android:text="@string/auth_key"
+                            app:icon="@drawable/ic_key" />
+                    </com.google.android.material.button.MaterialButtonToggleGroup>
 
                     <com.google.android.material.textfield.TextInputLayout
                         android:id="@+id/passwordLayout"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
+                        android:layout_marginTop="8dp"
                         android:hint="@string/password"
                         app:endIconMode="password_toggle">
 
@@ -122,6 +257,8 @@
                             android:id="@+id/passwordInput"
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"
+                            android:autofillHints="password"
+                            android:imeOptions="actionDone"
                             android:inputType="textPassword" />
                     </com.google.android.material.textfield.TextInputLayout>
 
@@ -129,6 +266,7 @@
                         android:id="@+id/keyLayout"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
+                        android:layout_marginTop="8dp"
                         android:hint="@string/private_key"
                         android:visibility="gone">
 
@@ -136,9 +274,11 @@
                             android:id="@+id/keyInput"
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"
+                            android:fontFamily="monospace"
                             android:gravity="top"
-                            android:inputType="textMultiLine"
-                            android:minLines="4" />
+                            android:inputType="textMultiLine|textNoSuggestions"
+                            android:minLines="5"
+                            android:textSize="12sp" />
                     </com.google.android.material.textfield.TextInputLayout>
 
                     <com.google.android.material.textfield.TextInputLayout
@@ -160,144 +300,79 @@
             </com.google.android.material.card.MaterialCardView>
 
             <com.google.android.material.card.MaterialCardView
+                android:id="@+id/mappingCard"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="12dp"
-                app:cardElevation="1dp"
-                app:contentPadding="16dp">
+                android:layout_marginTop="@dimen/card_gap">
 
                 <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:orientation="vertical">
+                    android:orientation="vertical"
+                    android:padding="18dp">
 
-                    <TextView
-                        android:layout_width="wrap_content"
+                    <LinearLayout
+                        android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:text="@string/mapping_group_title"
-                        android:textAppearance="?attr/textAppearanceTitleMedium" />
+                        android:gravity="center_vertical"
+                        android:orientation="horizontal">
 
-                    <TextView
-                        android:id="@+id/mappingHint"
+                        <TextView
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:text="@string/mapping_group_title"
+                            android:textAppearance="@style/TextAppearance.ALiteSsh.Section" />
+
+                        <com.google.android.material.button.MaterialButton
+                            android:id="@+id/addMappingButton"
+                            style="@style/Widget.Material3.Button.TextButton"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:contentDescription="@string/cd_add_mapping"
+                            android:minWidth="0dp"
+                            android:text="@string/action_add"
+                            app:icon="@drawable/ic_add"
+                            app:iconPadding="4dp" />
+                    </LinearLayout>
+
+                    <LinearLayout
+                        android:id="@+id/mappingEmpty"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:layout_marginTop="8dp"
-                        android:text="@string/mapping_hint"
-                        android:textAppearance="?attr/textAppearanceBodySmall" />
+                        android:gravity="center_horizontal"
+                        android:orientation="vertical"
+                        android:paddingTop="20dp"
+                        android:paddingBottom="12dp"
+                        android:visibility="gone"
+                        tools:visibility="visible">
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="@string/mapping_empty_title"
+                            android:textAppearance="@style/TextAppearance.Material3.TitleMedium" />
+
+                        <TextView
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="6dp"
+                            android:gravity="center"
+                            android:text="@string/mapping_empty_body"
+                            android:textAppearance="@style/TextAppearance.Material3.BodyMedium"
+                            android:textColor="@color/on_surface_variant" />
+                    </LinearLayout>
 
                     <LinearLayout
                         android:id="@+id/mappingList"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:layout_marginTop="8dp"
+                        android:animateLayoutChanges="true"
                         android:orientation="vertical" />
-
-                    <LinearLayout
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="8dp"
-                        android:gravity="center_vertical"
-                        android:orientation="horizontal">
-
-                        <com.google.android.material.textfield.TextInputLayout
-                            android:layout_width="0dp"
-                            android:layout_height="wrap_content"
-                            android:layout_weight="1"
-                            android:hint="@string/local_port">
-
-                            <com.google.android.material.textfield.TextInputEditText
-                                android:id="@+id/newLocalPortInput"
-                                android:layout_width="match_parent"
-                                android:layout_height="wrap_content"
-                                android:inputType="number"
-                                android:text="8080" />
-                        </com.google.android.material.textfield.TextInputLayout>
-
-                        <TextView
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:layout_marginHorizontal="8dp"
-                            android:text="@string/mapping_arrow"
-                            android:textAppearance="?attr/textAppearanceTitleMedium" />
-
-                        <com.google.android.material.textfield.TextInputLayout
-                            android:layout_width="0dp"
-                            android:layout_height="wrap_content"
-                            android:layout_weight="1"
-                            android:hint="@string/remote_port">
-
-                            <com.google.android.material.textfield.TextInputEditText
-                                android:id="@+id/newRemotePortInput"
-                                android:layout_width="match_parent"
-                                android:layout_height="wrap_content"
-                                android:inputType="number"
-                                android:text="80" />
-                        </com.google.android.material.textfield.TextInputLayout>
-                    </LinearLayout>
-
-                    <com.google.android.material.button.MaterialButton
-                        android:id="@+id/addMappingButton"
-                        style="@style/Widget.Material3.Button.TonalButton"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="8dp"
-                        android:text="@string/action_add_mapping" />
                 </LinearLayout>
             </com.google.android.material.card.MaterialCardView>
-
-            <com.google.android.material.checkbox.MaterialCheckBox
-                android:id="@+id/tofuCheck"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="8dp"
-                android:checked="true"
-                android:text="@string/tofu" />
-
-            <com.google.android.material.checkbox.MaterialCheckBox
-                android:id="@+id/skipMismatchCheck"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:text="@string/skip_mismatch" />
-
-            <TextView
-                android:id="@+id/statusText"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="8dp"
-                android:text="@string/status_idle"
-                android:textAppearance="?attr/textAppearanceBodyMedium" />
-
-            <com.google.android.material.button.MaterialButton
-                android:id="@+id/connectButton"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="12dp"
-                android:text="@string/action_connect" />
-
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="16dp"
-                android:text="@string/log_title"
-                android:textAppearance="?attr/textAppearanceTitleSmall" />
-
-            <ScrollView
-                android:id="@+id/logScroll"
-                android:layout_width="match_parent"
-                android:layout_height="180dp"
-                android:layout_marginTop="8dp"
-                android:background="?attr/colorSurfaceVariant"
-                android:fillViewport="true"
-                android:padding="8dp">
-
-                <TextView
-                    android:id="@+id/logView"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:fontFamily="monospace"
-                    android:textIsSelectable="true"
-                    android:textSize="12sp" />
-            </ScrollView>
         </LinearLayout>
     </androidx.core.widget.NestedScrollView>
 </androidx.coordinatorlayout.widget.CoordinatorLayout>

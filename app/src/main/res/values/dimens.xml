@@ -1,0 +1,5 @@
+<resources>
+    <dimen name="screen_padding">20dp</dimen>
+    <dimen name="card_gap">12dp</dimen>
+    <dimen name="hero_min_height">148dp</dimen>
+</resources>

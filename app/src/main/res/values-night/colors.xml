@@ -1,0 +1,23 @@
+<resources>
+    <color name="page_background">#0E1317</color>
+    <color name="surface">#171E24</color>
+    <color name="surface_container">#1E272E</color>
+    <color name="on_surface">#E8EEF2</color>
+    <color name="on_surface_variant">#A8B6BE</color>
+    <color name="outline">#3A4850</color>
+    <color name="outline_variant">#2A343B</color>
+    <color name="chip_bg">#1AFFFFFF</color>
+
+    <color name="status_idle">#8B98A3</color>
+    <color name="status_connecting">#5EC8F0</color>
+    <color name="status_connected">#3DDC97</color>
+    <color name="status_error">#FF8A80</color>
+
+    <color name="hero_connected_bg">#143328</color>
+    <color name="hero_idle_bg">#1C242C</color>
+    <color name="hero_error_bg">#3A1C1C</color>
+    <color name="hero_connecting_bg">#14303A</color>
+
+    <color name="log_surface">#0B1117</color>
+    <color name="log_text">#D7E3EC</color>
+</resources>
