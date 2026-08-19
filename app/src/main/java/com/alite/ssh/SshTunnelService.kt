@@ -7,10 +7,14 @@ import android.app.PendingIntent
 import android.app.Service
 import android.content.Intent
 import android.content.pm.ServiceInfo
+import android.graphics.Bitmap
+import android.graphics.Canvas
 import android.os.Build
 import android.os.IBinder
 import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
+import androidx.core.content.ContextCompat
+import androidx.core.graphics.createBitmap
 
 class SshTunnelService : Service(), SshNative.Listener {
     private val native = SshNative()
@@ -123,6 +127,8 @@ class SshTunnelService : Service(), SshNative.Listener {
         val first = config.enabledMappings().firstOrNull()
         val notification: Notification = NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_tunnel)
+            .setLargeIcon(launcherBitmap())
+            .setColor(ContextCompat.getColor(this, R.color.seed))
             .setContentTitle(getString(R.string.notification_title))
             .setContentText(
                 if (first == null) {
@@ -133,7 +139,7 @@ class SshTunnelService : Service(), SshNative.Listener {
             )
             .setContentIntent(openApp)
             .setOngoing(true)
-            .addAction(0, getString(R.string.action_stop), stop)
+            .addAction(R.drawable.ic_tunnel, getString(R.string.action_stop), stop)
             .build()
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
@@ -156,6 +162,18 @@ class SshTunnelService : Service(), SshNative.Listener {
             NotificationManager.IMPORTANCE_LOW,
         )
         manager.createNotificationChannel(channel)
+    }
+
+    private fun launcherBitmap(): Bitmap {
+        val drawable = ContextCompat.getDrawable(this, R.mipmap.ic_launcher)
+            ?: ContextCompat.getDrawable(this, R.drawable.ic_tunnel)!!
+        val size = resources.getDimensionPixelSize(android.R.dimen.notification_large_icon_width)
+            .coerceAtLeast(drawable.intrinsicWidth.coerceAtLeast(48))
+        val bitmap = createBitmap(size, size)
+        val canvas = Canvas(bitmap)
+        drawable.setBounds(0, 0, size, size)
+        drawable.draw(canvas)
+        return bitmap
     }
 
     private fun applyForwards() {
