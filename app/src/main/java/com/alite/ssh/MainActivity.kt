@@ -1,9 +1,13 @@
 package com.alite.ssh
 
 import android.Manifest
+import android.content.ActivityNotFoundException
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.content.res.ColorStateList
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.view.LayoutInflater
@@ -203,18 +207,26 @@ class MainActivity : AppCompatActivity(), TunnelHub.Observer {
 
     private fun renderMappings() {
         val host = binding.hostInput.text?.toString()?.trim().orEmpty()
+            .ifBlank { getString(R.string.ssh_group_title) }
         val inflater = LayoutInflater.from(this)
         binding.mappingEmpty.isVisible = mappings.isEmpty()
         binding.mappingList.isVisible = mappings.isNotEmpty()
         binding.mappingList.removeAllViews()
         mappings.toList().forEach { mapping ->
             val row = ItemPortMappingBinding.inflate(inflater, binding.mappingList, false)
-            row.localPortView.text = mapping.localPort.toString()
-            row.remotePortView.text = mapping.remotePort.toString()
-            row.remoteCaption.text = host.ifBlank { getString(R.string.mapping_remote_caption) }
-            row.root.alpha = if (mapping.enabled) 1f else 0.55f
+            row.mappingNameView.text = mapping.title()
+            row.mappingRouteView.text = getString(
+                R.string.mapping_route,
+                mapping.localPort,
+                host,
+                mapping.remotePort,
+            )
+            row.root.alpha = if (mapping.enabled) 1f else 0.62f
             row.enableSwitch.setOnCheckedChangeListener(null)
             row.enableSwitch.isChecked = mapping.enabled
+            row.enableSwitch.text = getString(
+                if (mapping.enabled) R.string.mapping_on else R.string.mapping_off,
+            )
             row.enableSwitch.setOnCheckedChangeListener { _, checked ->
                 val idx = mappings.indexOfFirst { it.id == mapping.id }
                 if (idx >= 0) {
@@ -237,18 +249,20 @@ class MainActivity : AppCompatActivity(), TunnelHub.Observer {
         when {
             !isConnectedState(TunnelHub.state) -> snack(R.string.err_open_need_connect)
             !mapping.enabled -> snack(R.string.err_open_need_enable)
-            else -> startActivity(
-                Intent(this, BrowserActivity::class.java)
-                    .putExtra(BrowserActivity.EXTRA_PORT, mapping.localPort),
-            )
+            else -> try {
+                startActivity(
+                    Intent(Intent.ACTION_VIEW, Uri.parse("http://127.0.0.1:${mapping.localPort}/")),
+                )
+            } catch (_: ActivityNotFoundException) {
+                snack(R.string.err_no_browser)
+            }
         }
     }
 
     private fun confirmDelete(mapping: PortMapping) {
         val host = binding.hostInput.text?.toString()?.trim().orEmpty()
-        val summary = mapping.display(host)
         val message = buildString {
-            append(summary)
+            append(mapping.display(host))
             if (isBusyState(TunnelHub.state)) {
                 append("\n\n")
                 append(getString(R.string.delete_mapping_running))
@@ -284,6 +298,7 @@ class MainActivity : AppCompatActivity(), TunnelHub.Observer {
             .create()
         dialog.setOnShowListener {
             dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+                val name = view.nameInput.text.toString().trim()
                 val local = view.localPortInput.text.toString().toIntOrNull()
                 val remote = view.remotePortInput.text.toString().toIntOrNull()
                 view.localPortLayout.error = null
@@ -300,16 +315,22 @@ class MainActivity : AppCompatActivity(), TunnelHub.Observer {
                     view.localPortLayout.error = getString(R.string.err_dup_local_port)
                     return@setOnClickListener
                 }
-                mappings.add(PortMapping(localPort = local, remotePort = remote, enabled = true))
+                val mapping = PortMapping(
+                    name = name,
+                    localPort = local,
+                    remotePort = remote,
+                    enabled = true,
+                )
+                mappings.add(mapping)
                 persistForm()
                 renderMappings()
                 pushForwardsIfRunning()
                 dialog.dismiss()
-                snack(getString(R.string.msg_mapping_added, local, remote))
+                snack(getString(R.string.msg_mapping_added, mapping.title()))
             }
         }
         dialog.show()
-        view.localPortInput.requestFocus()
+        view.nameInput.requestFocus()
     }
 
     private fun showAdvanced() {
@@ -340,6 +361,7 @@ class MainActivity : AppCompatActivity(), TunnelHub.Observer {
         logViewRef = sheet.logView
         logScrollRef = sheet.logScroll
         updateLogSheet(TunnelHub.snapshot())
+        sheet.copyLogsButton.setOnClickListener { copyLogs() }
         sheet.clearLogsButton.setOnClickListener { TunnelHub.resetLogs() }
         dialog.setOnDismissListener {
             logViewRef = null
@@ -348,6 +370,17 @@ class MainActivity : AppCompatActivity(), TunnelHub.Observer {
         dialog.behavior.skipCollapsed = true
         dialog.behavior.state = BottomSheetBehavior.STATE_EXPANDED
         dialog.show()
+    }
+
+    private fun copyLogs() {
+        val text = TunnelHub.snapshot().logs.joinToString("\n")
+        if (text.isBlank()) {
+            snack(R.string.log_empty)
+            return
+        }
+        getSystemService(ClipboardManager::class.java)
+            .setPrimaryClip(ClipData.newPlainText(getString(R.string.log_title), text))
+        snack(R.string.msg_logs_copied)
     }
 
     private fun updateLogSheet(snapshot: TunnelHub.Snapshot) {
@@ -372,37 +405,12 @@ class MainActivity : AppCompatActivity(), TunnelHub.Observer {
             "error" -> getString(R.string.hero_error_title)
             else -> getString(R.string.hero_idle_title)
         }
-        binding.heroStatusSubtitle.text = when (snapshot.state) {
-            "connecting" -> getString(R.string.hero_connecting_subtitle)
-            "authenticating" -> getString(R.string.hero_auth_subtitle)
-            "listening" -> getString(R.string.hero_connected_subtitle)
-            "error" -> getString(R.string.hero_error_subtitle)
-            else -> getString(R.string.hero_idle_subtitle)
-        }
-        val cfg = snapshot.config
-        if (phase == UiPhase.Connected && cfg != null) {
-            binding.heroMeta.isVisible = true
-            binding.heroMeta.text = getString(
-                R.string.hero_meta_connected,
-                "${cfg.username}@${cfg.host}",
-                cfg.enabledMappings().size,
-            )
-        } else {
-            binding.heroMeta.isVisible = false
-        }
-        val heroBg = when (phase) {
-            UiPhase.Connected -> R.color.hero_connected_bg
-            UiPhase.Connecting -> R.color.hero_connecting_bg
-            UiPhase.Error -> R.color.hero_error_bg
-            UiPhase.Idle -> R.color.hero_idle_bg
-        }
         val dot = when (phase) {
             UiPhase.Connected -> R.color.status_connected
             UiPhase.Connecting -> R.color.status_connecting
             UiPhase.Error -> R.color.status_error
             UiPhase.Idle -> R.color.status_idle
         }
-        binding.heroCard.setCardBackgroundColor(ContextCompat.getColor(this, heroBg))
         ImageViewCompat.setImageTintList(
             binding.heroStatusDot,
             ColorStateList.valueOf(ContextCompat.getColor(this, dot)),
@@ -524,7 +532,15 @@ class MainActivity : AppCompatActivity(), TunnelHub.Observer {
         private fun isConnectedState(state: String) = state == "listening"
 
         fun encodeMappings(items: List<PortMapping>): String =
-            items.joinToString(";") { "${it.localPort}:${it.remotePort}:${if (it.enabled) 1 else 0}:${it.id}" }
+            items.joinToString(";") {
+                listOf(
+                    it.localPort.toString(),
+                    it.remotePort.toString(),
+                    if (it.enabled) "1" else "0",
+                    it.id,
+                    Uri.encode(it.name).orEmpty(),
+                ).joinToString(":")
+            }
 
         fun decodeMappings(raw: String?, prefs: android.content.SharedPreferences): List<PortMapping> {
             if (!raw.isNullOrBlank()) {
@@ -537,7 +553,14 @@ class MainActivity : AppCompatActivity(), TunnelHub.Observer {
                         val remote = bits[1].toIntOrNull() ?: return@mapNotNull null
                         val enabled = bits[2] != "0"
                         val id = bits.getOrNull(3)?.takeIf { it.isNotBlank() } ?: UUID.randomUUID().toString()
-                        PortMapping(id = id, localPort = local, remotePort = remote, enabled = enabled)
+                        val name = bits.getOrNull(4)?.let { Uri.decode(it) }.orEmpty()
+                        PortMapping(
+                            id = id,
+                            name = name,
+                            localPort = local,
+                            remotePort = remote,
+                            enabled = enabled,
+                        )
                     }
                 }
             }

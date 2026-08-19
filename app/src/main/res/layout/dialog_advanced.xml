@@ -3,35 +3,66 @@
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:orientation="vertical"
-    android:paddingTop="8dp">
+    android:paddingStart="@dimen/dialog_padding"
+    android:paddingTop="4dp"
+    android:paddingEnd="@dimen/dialog_padding"
+    android:paddingBottom="8dp">
 
-    <com.google.android.material.materialswitch.MaterialSwitch
-        android:id="@+id/tofuSwitch"
+    <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:checked="true"
-        android:text="@string/tofu" />
+        android:background="@drawable/bg_dialog_block"
+        android:orientation="vertical"
+        android:paddingStart="14dp"
+        android:paddingTop="10dp"
+        android:paddingEnd="12dp"
+        android:paddingBottom="10dp">
 
-    <TextView
+        <com.google.android.material.materialswitch.MaterialSwitch
+            android:id="@+id/tofuSwitch"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:checked="true"
+            android:minHeight="40dp"
+            android:text="@string/tofu"
+            android:textAppearance="@style/TextAppearance.Material3.BodyLarge" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginEnd="8dp"
+            android:paddingBottom="2dp"
+            android:text="@string/tofu_helper"
+            android:textAppearance="@style/TextAppearance.Material3.BodySmall"
+            android:textColor="@color/on_surface_variant" />
+    </LinearLayout>
+
+    <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginStart="4dp"
-        android:layout_marginBottom="12dp"
-        android:text="@string/tofu_helper"
-        android:textAppearance="@style/TextAppearance.Material3.BodySmall"
-        android:textColor="@color/on_surface_variant" />
+        android:layout_marginTop="10dp"
+        android:background="@drawable/bg_dialog_block"
+        android:orientation="vertical"
+        android:paddingStart="14dp"
+        android:paddingTop="10dp"
+        android:paddingEnd="12dp"
+        android:paddingBottom="10dp">
 
-    <com.google.android.material.materialswitch.MaterialSwitch
-        android:id="@+id/skipMismatchSwitch"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:text="@string/skip_mismatch" />
+        <com.google.android.material.materialswitch.MaterialSwitch
+            android:id="@+id/skipMismatchSwitch"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:minHeight="40dp"
+            android:text="@string/skip_mismatch"
+            android:textAppearance="@style/TextAppearance.Material3.BodyLarge" />
 
-    <TextView
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginStart="4dp"
-        android:text="@string/skip_mismatch_helper"
-        android:textAppearance="@style/TextAppearance.Material3.BodySmall"
-        android:textColor="@color/on_surface_variant" />
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginEnd="8dp"
+            android:paddingBottom="2dp"
+            android:text="@string/skip_mismatch_helper"
+            android:textAppearance="@style/TextAppearance.Material3.BodySmall"
+            android:textColor="@color/on_surface_variant" />
+    </LinearLayout>
 </LinearLayout>

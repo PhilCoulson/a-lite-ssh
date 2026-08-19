@@ -4,13 +4,17 @@ import java.util.UUID
 
 data class PortMapping(
     val id: String = UUID.randomUUID().toString(),
+    val name: String = "",
     val localPort: Int,
     val remotePort: Int,
     val enabled: Boolean = true,
 ) {
+    fun title(): String = name.ifBlank { "$localPort → $remotePort" }
+
     fun display(sshHost: String): String {
         val host = sshHost.ifBlank { "SSH主机" }
-        return "127.0.0.1:$localPort  →  $host:$remotePort"
+        val route = "127.0.0.1:$localPort  →  $host:$remotePort"
+        return if (name.isBlank()) route else "${title()}\n$route"
     }
 }
 

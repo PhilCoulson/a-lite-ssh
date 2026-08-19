@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:orientation="vertical"
@@ -19,17 +20,28 @@
             android:textAppearance="@style/TextAppearance.Material3.TitleLarge" />
 
         <com.google.android.material.button.MaterialButton
+            android:id="@+id/copyLogsButton"
+            style="@style/Widget.Material3.Button.TextButton"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:minWidth="0dp"
+            android:text="@string/action_copy_logs"
+            app:icon="@drawable/ic_copy"
+            app:iconPadding="4dp" />
+
+        <com.google.android.material.button.MaterialButton
             android:id="@+id/clearLogsButton"
             style="@style/Widget.Material3.Button.TextButton"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
+            android:minWidth="0dp"
             android:text="@string/action_clear_logs" />
     </LinearLayout>
 
     <ScrollView
         android:id="@+id/logScroll"
         android:layout_width="match_parent"
-        android:layout_height="360dp"
+        android:layout_height="@dimen/log_sheet_height"
         android:layout_marginTop="12dp"
         android:background="@drawable/bg_log"
         android:fillViewport="true"

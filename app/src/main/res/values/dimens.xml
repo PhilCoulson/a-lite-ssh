@@ -1,5 +1,7 @@
 <resources>
-    <dimen name="screen_padding">20dp</dimen>
-    <dimen name="card_gap">12dp</dimen>
-    <dimen name="hero_min_height">148dp</dimen>
+    <dimen name="screen_padding">16dp</dimen>
+    <dimen name="card_gap">8dp</dimen>
+    <dimen name="card_padding">12dp</dimen>
+    <dimen name="dialog_padding">24dp</dimen>
+    <dimen name="log_sheet_height">440dp</dimen>
 </resources>

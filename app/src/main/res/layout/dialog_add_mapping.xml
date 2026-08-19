@@ -3,7 +3,10 @@
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:orientation="vertical"
-    android:paddingTop="8dp">
+    android:paddingStart="@dimen/dialog_padding"
+    android:paddingTop="4dp"
+    android:paddingEnd="@dimen/dialog_padding"
+    android:paddingBottom="8dp">
 
     <TextView
         android:layout_width="match_parent"
@@ -14,33 +17,58 @@
         android:textColor="@color/on_surface_variant" />
 
     <com.google.android.material.textfield.TextInputLayout
-        android:id="@+id/localPortLayout"
+        android:id="@+id/nameLayout"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:hint="@string/local_port">
+        android:hint="@string/mapping_name">
 
         <com.google.android.material.textfield.TextInputEditText
-            android:id="@+id/localPortInput"
+            android:id="@+id/nameInput"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:imeOptions="actionNext"
-            android:inputType="number"
-            android:selectAllOnFocus="true" />
+            android:inputType="textCapWords"
+            android:maxLength="24"
+            android:maxLines="1" />
     </com.google.android.material.textfield.TextInputLayout>
 
-    <com.google.android.material.textfield.TextInputLayout
-        android:id="@+id/remotePortLayout"
+    <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="8dp"
-        android:hint="@string/remote_port">
+        android:layout_marginTop="10dp"
+        android:orientation="horizontal">
 
-        <com.google.android.material.textfield.TextInputEditText
-            android:id="@+id/remotePortInput"
-            android:layout_width="match_parent"
+        <com.google.android.material.textfield.TextInputLayout
+            android:id="@+id/localPortLayout"
+            android:layout_width="0dp"
             android:layout_height="wrap_content"
-            android:imeOptions="actionDone"
-            android:inputType="number"
-            android:selectAllOnFocus="true" />
-    </com.google.android.material.textfield.TextInputLayout>
+            android:layout_weight="1"
+            android:hint="@string/local_port">
+
+            <com.google.android.material.textfield.TextInputEditText
+                android:id="@+id/localPortInput"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:imeOptions="actionNext"
+                android:inputType="number"
+                android:selectAllOnFocus="true" />
+        </com.google.android.material.textfield.TextInputLayout>
+
+        <com.google.android.material.textfield.TextInputLayout
+            android:id="@+id/remotePortLayout"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="10dp"
+            android:layout_weight="1"
+            android:hint="@string/remote_port">
+
+            <com.google.android.material.textfield.TextInputEditText
+                android:id="@+id/remotePortInput"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:imeOptions="actionDone"
+                android:inputType="number"
+                android:selectAllOnFocus="true" />
+        </com.google.android.material.textfield.TextInputLayout>
+    </LinearLayout>
 </LinearLayout>
