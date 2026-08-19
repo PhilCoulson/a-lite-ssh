@@ -1,0 +1,7 @@
+<resources>
+    <style name="Theme.ALiteSsh" parent="Theme.Material3.DayNight.NoActionBar">
+        <item name="colorPrimary">@color/md_seed</item>
+        <item name="android:statusBarColor">@color/md_seed</item>
+        <item name="android:navigationBarColor">?android:attr/colorBackground</item>
+    </style>
+</resources>

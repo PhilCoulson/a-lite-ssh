@@ -1,0 +1,31 @@
+<resources>
+    <string name="app_name">a-lite-ssh</string>
+    <string name="host">SSH 主机</string>
+    <string name="port">SSH 端口</string>
+    <string name="username">用户名</string>
+    <string name="auth">认证方式</string>
+    <string name="auth_password">密码</string>
+    <string name="auth_key">私钥</string>
+    <string name="password">密码</string>
+    <string name="private_key">PEM 私钥</string>
+    <string name="passphrase">私钥口令（可选）</string>
+    <string name="local_port">本地端口</string>
+    <string name="remote_host">远端地址</string>
+    <string name="remote_port">远端端口</string>
+    <string name="tofu">首次连接信任并保存主机密钥</string>
+    <string name="skip_mismatch">忽略主机密钥不匹配（不安全）</string>
+    <string name="action_connect">连接并转发</string>
+    <string name="action_disconnect">断开</string>
+    <string name="action_open_web">打开本地网页</string>
+    <string name="action_stop">停止</string>
+    <string name="status_fmt">状态：%1$s</string>
+    <string name="status_idle">状态：idle</string>
+    <string name="log_title">日志</string>
+    <string name="err_required">请填写主机和用户名</string>
+    <string name="err_need_password">请填写密码</string>
+    <string name="err_need_key">请粘贴 PEM 私钥</string>
+    <string name="notification_channel">SSH 隧道</string>
+    <string name="notification_title">SSH 本地转发运行中</string>
+    <string name="notification_text">%1$s → 127.0.0.1:%2$d</string>
+    <string name="browser_title">本地转发页面</string>
+</resources>
