@@ -380,14 +380,15 @@ class MainActivity : AppCompatActivity(), TunnelHub.Observer {
             else -> getString(R.string.hero_idle_subtitle)
         }
         val cfg = snapshot.config
-        val showMeta = phase == UiPhase.Connected && cfg != null
-        binding.heroMeta.isVisible = showMeta
-        if (showMeta && cfg != null) {
+        if (phase == UiPhase.Connected && cfg != null) {
+            binding.heroMeta.isVisible = true
             binding.heroMeta.text = getString(
                 R.string.hero_meta_connected,
                 "${cfg.username}@${cfg.host}",
                 cfg.enabledMappings().size,
             )
+        } else {
+            binding.heroMeta.isVisible = false
         }
         val heroBg = when (phase) {
             UiPhase.Connected -> R.color.hero_connected_bg
