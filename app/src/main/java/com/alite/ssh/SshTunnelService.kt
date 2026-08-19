@@ -32,6 +32,9 @@ class SshTunnelService : Service(), SshNative.Listener {
                 stopSelf()
                 return START_NOT_STICKY
             }
+            ACTION_UPDATE_FORWARDS -> {
+                applyForwards()
+            }
             ACTION_START -> {
                 val config = TunnelHub.config
                 if (config == null) {
@@ -40,6 +43,7 @@ class SshTunnelService : Service(), SshNative.Listener {
                 }
                 startInForeground(config)
                 if (!native.nativeIsRunning()) {
+                    val enabled = config.enabledMappings()
                     val rc = native.nativeStart(
                         host = config.host,
                         port = config.port,
@@ -47,9 +51,8 @@ class SshTunnelService : Service(), SshNative.Listener {
                         password = config.password,
                         privateKey = config.privateKey,
                         passphrase = config.passphrase,
-                        localPort = config.localPort,
-                        remoteHost = config.remoteHost,
-                        remotePort = config.remotePort,
+                        localPorts = enabled.map { it.localPort }.toIntArray(),
+                        remotePorts = enabled.map { it.remotePort }.toIntArray(),
                         listener = this,
                     )
                     if (rc != 0) {
@@ -117,10 +120,17 @@ class SshTunnelService : Service(), SshNative.Listener {
             Intent(this, SshTunnelService::class.java).setAction(ACTION_STOP),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
+        val first = config.enabledMappings().firstOrNull()
         val notification: Notification = NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_tunnel)
             .setContentTitle(getString(R.string.notification_title))
-            .setContentText(getString(R.string.notification_text, config.host, config.localPort))
+            .setContentText(
+                if (first == null) {
+                    config.host
+                } else {
+                    getString(R.string.notification_text, config.host, first.localPort)
+                },
+            )
             .setContentIntent(openApp)
             .setOngoing(true)
             .addAction(0, getString(R.string.action_stop), stop)
@@ -148,9 +158,22 @@ class SshTunnelService : Service(), SshNative.Listener {
         manager.createNotificationChannel(channel)
     }
 
+    private fun applyForwards() {
+        if (!native.nativeIsRunning()) {
+            return
+        }
+        val enabled = TunnelHub.config?.enabledMappings().orEmpty()
+        native.nativeReplaceForwards(
+            enabled.map { it.localPort }.toIntArray(),
+            enabled.map { it.remotePort }.toIntArray(),
+        )
+        TunnelHub.config?.let { startInForeground(it) }
+    }
+
     companion object {
         const val ACTION_START = "com.alite.ssh.START"
         const val ACTION_STOP = "com.alite.ssh.STOP"
+        const val ACTION_UPDATE_FORWARDS = "com.alite.ssh.UPDATE_FORWARDS"
         private const val CHANNEL_ID = "ssh_tunnel"
         private const val NOTIFICATION_ID = 42
     }

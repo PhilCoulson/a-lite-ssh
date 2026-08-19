@@ -14,11 +14,12 @@ class SshNative {
         password: String?,
         privateKey: String?,
         passphrase: String?,
-        localPort: Int,
-        remoteHost: String,
-        remotePort: Int,
+        localPorts: IntArray,
+        remotePorts: IntArray,
         listener: Listener,
     ): Int
+
+    external fun nativeReplaceForwards(localPorts: IntArray, remotePorts: IntArray): Int
 
     external fun nativeStop()
 

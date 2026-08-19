@@ -1,5 +1,6 @@
 <resources>
     <string name="app_name">a-lite-ssh</string>
+    <string name="ssh_group_title">SSH 连接</string>
     <string name="host">SSH 主机</string>
     <string name="port">SSH 端口</string>
     <string name="username">用户名</string>
@@ -9,16 +10,19 @@
     <string name="password">密码</string>
     <string name="private_key">PEM 私钥</string>
     <string name="passphrase">私钥口令（可选）</string>
+    <string name="mapping_group_title">端口映射</string>
+    <string name="mapping_hint">连接成功后，在手机上打开 http://127.0.0.1:本地端口，即可访问 SSH 主机上对应的远端端口。\n例如 127.0.0.1:8080 → 云主机:80</string>
+    <string name="mapping_arrow">→</string>
+    <string name="mapping_enabled">启用</string>
     <string name="local_port">本地端口</string>
-    <string name="remote_host">远端地址</string>
-    <string name="remote_host_helper">云上 Web 的监听地址。访问本机服务填 127.0.0.1，不要填云主机公网 IP</string>
-    <string name="remote_host_rewritten">远端地址与 SSH 主机相同，已改为 127.0.0.1，避免云主机回连自己的公网 IP 失败</string>
     <string name="remote_port">远端端口</string>
+    <string name="action_add_mapping">添加映射</string>
+    <string name="action_delete">删除</string>
     <string name="tofu">首次连接信任并保存主机密钥</string>
     <string name="skip_mismatch">忽略主机密钥不匹配（不安全）</string>
     <string name="action_connect">连接并转发</string>
     <string name="action_disconnect">断开</string>
-    <string name="action_open_web">打开本地网页</string>
+    <string name="action_open_web">打开</string>
     <string name="action_stop">停止</string>
     <string name="status_fmt">状态：%1$s</string>
     <string name="status_idle">状态：idle</string>
@@ -26,8 +30,12 @@
     <string name="err_required">请填写主机和用户名</string>
     <string name="err_need_password">请填写密码</string>
     <string name="err_need_key">请粘贴 PEM 私钥</string>
+    <string name="err_need_mapping">请至少添加并启用一组端口映射</string>
+    <string name="err_bad_port">端口需在 1–65535 之间</string>
+    <string name="err_dup_local_port">该本地端口已存在</string>
+    <string name="err_too_many_mappings">最多支持 16 组映射</string>
     <string name="notification_channel">SSH 隧道</string>
     <string name="notification_title">SSH 本地转发运行中</string>
-    <string name="notification_text">%1$s → 127.0.0.1:%2$d</string>
+    <string name="notification_text">127.0.0.1:%2$d → %1$s</string>
     <string name="browser_title">本地转发页面</string>
 </resources>

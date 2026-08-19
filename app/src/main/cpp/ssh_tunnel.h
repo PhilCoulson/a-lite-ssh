@@ -7,6 +7,13 @@
 extern "C" {
 #endif
 
+#define ALITE_MAX_FORWARDS 16
+
+typedef struct PortForward {
+    int local_port;
+    int remote_port;
+} PortForward;
+
 typedef struct TunnelConfig {
     char *host;
     int port;
@@ -14,9 +21,8 @@ typedef struct TunnelConfig {
     char *password;
     char *private_key;
     char *passphrase;
-    int local_port;
-    char *remote_host;
-    int remote_port;
+    int forward_count;
+    PortForward forwards[ALITE_MAX_FORWARDS];
 } TunnelConfig;
 
 typedef struct TunnelCallbacks {
@@ -32,6 +38,9 @@ int tunnel_start(const TunnelConfig *cfg, const TunnelCallbacks *cb);
 void tunnel_stop(void);
 
 int tunnel_is_running(void);
+
+/* Replace listening forwards on a running tunnel. Empty count is allowed. */
+int tunnel_replace_forwards(const int *local_ports, const int *remote_ports, int count);
 
 #ifdef __cplusplus
 }

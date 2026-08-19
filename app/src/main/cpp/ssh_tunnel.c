@@ -16,12 +16,12 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <strings.h>
 #include <sys/socket.h>
 #include <unistd.h>
 
 #define TAG "ALiteSsh"
 #define MAX_CONNS 32
+#define MAX_FORWARDS ALITE_MAX_FORWARDS
 #define IO_BUF 32768
 #define LISTEN_BACKLOG 16
 
@@ -32,7 +32,15 @@ typedef struct Conn {
     LIBSSH2_CHANNEL *channel;
     int local_eof;
     int remote_eof;
+    int local_port;
+    int remote_port;
 } Conn;
+
+typedef struct ListenSlot {
+    int fd;
+    int local_port;
+    int remote_port;
+} ListenSlot;
 
 typedef struct TunnelState {
     volatile int running;
@@ -43,6 +51,9 @@ typedef struct TunnelState {
     int wake_w;
     TunnelConfig cfg;
     TunnelCallbacks cb;
+    PortForward pending[MAX_FORWARDS];
+    int pending_count;
+    volatile int pending_dirty;
 } TunnelState;
 
 static TunnelState g_state = {
@@ -50,6 +61,8 @@ static TunnelState g_state = {
     .stop_requested = 0,
     .wake_r = -1,
     .wake_w = -1,
+    .pending_count = 0,
+    .pending_dirty = 0,
     .lock = PTHREAD_MUTEX_INITIALIZER,
 };
 
@@ -69,7 +82,7 @@ void tunnel_config_free(TunnelConfig *cfg) {
     free(cfg->password);
     free(cfg->private_key);
     free(cfg->passphrase);
-    free(cfg->remote_host);
+    cfg->forward_count = 0;
     memset(cfg, 0, sizeof(*cfg));
 }
 
@@ -82,9 +95,14 @@ static TunnelConfig cfg_dup(const TunnelConfig *src) {
     d.password = dup_or_null(src->password);
     d.private_key = dup_or_null(src->private_key);
     d.passphrase = dup_or_null(src->passphrase);
-    d.local_port = src->local_port;
-    d.remote_host = dup_or_null(src->remote_host);
-    d.remote_port = src->remote_port;
+    d.forward_count = src->forward_count;
+    if (d.forward_count < 0) {
+        d.forward_count = 0;
+    }
+    if (d.forward_count > MAX_FORWARDS) {
+        d.forward_count = MAX_FORWARDS;
+    }
+    memcpy(d.forwards, src->forwards, sizeof(d.forwards));
     return d;
 }
 
@@ -332,6 +350,8 @@ static void close_conn(Conn *c) {
     close_fd(&c->fd);
     c->local_eof = 0;
     c->remote_eof = 0;
+    c->local_port = 0;
+    c->remote_port = 0;
 }
 
 static int wait_session(int socket_fd, LIBSSH2_SESSION *session, int timeout_ms) {
@@ -358,42 +378,6 @@ static int session_last_error(LIBSSH2_SESSION *session, char *err, size_t errlen
     return code;
 }
 
-static int host_equal(const char *a, const char *b) {
-    char na[256];
-    char nb[256];
-    if (!a || !b || !a[0] || !b[0]) {
-        return 0;
-    }
-    while (*a == '[') {
-        a++;
-    }
-    while (*b == '[') {
-        b++;
-    }
-    snprintf(na, sizeof(na), "%s", a);
-    snprintf(nb, sizeof(nb), "%s", b);
-    size_t la = strlen(na);
-    size_t lb = strlen(nb);
-    if (la && na[la - 1] == ']') {
-        na[la - 1] = '\0';
-    }
-    if (lb && nb[lb - 1] == ']') {
-        nb[lb - 1] = '\0';
-    }
-    return strcasecmp(na, nb) == 0;
-}
-
-static const char *forward_dest_host(const TunnelConfig *cfg) {
-    if (!cfg->remote_host || !cfg->remote_host[0] ||
-        strcasecmp(cfg->remote_host, "localhost") == 0) {
-        return "127.0.0.1";
-    }
-    if (host_equal(cfg->remote_host, cfg->host)) {
-        return "127.0.0.1";
-    }
-    return cfg->remote_host;
-}
-
 static int session_dead(int code) {
     return code == LIBSSH2_ERROR_SOCKET_NONE ||
            code == LIBSSH2_ERROR_SOCKET_DISCONNECT ||
@@ -406,7 +390,7 @@ static void describe_forward_error(int code, char *err, size_t errlen) {
     const char *hint = NULL;
     switch (code) {
         case LIBSSH2_ERROR_TIMEOUT:
-            hint = "打开转发通道超时。远端请填云上 Web 的监听地址，访问本机服务用 127.0.0.1，不要填云主机公网 IP";
+            hint = "打开转发通道超时。请确认云主机上该远端端口有 Web 服务在监听";
             break;
         case LIBSSH2_ERROR_CHANNEL_FAILURE:
             hint = "服务器拒绝了端口转发。请检查 sshd 的 AllowTcpForwarding，以及远端端口是否在监听";
@@ -570,6 +554,88 @@ static int pump_ssh_to_local(Conn *c) {
     return 0;
 }
 
+static void close_conns_for_local_port(Conn *conns, int local_port) {
+    for (int i = 0; i < MAX_CONNS; ++i) {
+        if (conns[i].fd >= 0 && conns[i].local_port == local_port) {
+            close_conn(&conns[i]);
+        }
+    }
+}
+
+static int apply_pending_forwards(
+    TunnelState *st,
+    ListenSlot *listens,
+    int *listen_n,
+    Conn *conns,
+    TunnelCallbacks *cb) {
+    pthread_mutex_lock(&st->lock);
+    if (!st->pending_dirty) {
+        pthread_mutex_unlock(&st->lock);
+        return *listen_n;
+    }
+    PortForward wanted[MAX_FORWARDS];
+    int wc = st->pending_count;
+    if (wc < 0) {
+        wc = 0;
+    }
+    if (wc > MAX_FORWARDS) {
+        wc = MAX_FORWARDS;
+    }
+    memcpy(wanted, st->pending, sizeof(wanted));
+    st->pending_dirty = 0;
+    pthread_mutex_unlock(&st->lock);
+
+    ListenSlot next[MAX_FORWARDS];
+    int nn = 0;
+    memset(next, 0, sizeof(next));
+    for (int i = 0; i < MAX_FORWARDS; ++i) {
+        next[i].fd = -1;
+    }
+    for (int i = 0; i < wc; ++i) {
+        int reused = -1;
+        for (int j = 0; j < *listen_n; ++j) {
+            if (listens[j].fd >= 0 &&
+                listens[j].local_port == wanted[i].local_port &&
+                listens[j].remote_port == wanted[i].remote_port) {
+                reused = j;
+                break;
+            }
+        }
+        if (reused >= 0) {
+            next[nn] = listens[reused];
+            listens[reused].fd = -1;
+            nn++;
+            continue;
+        }
+        char err[256];
+        next[nn].fd = listen_local(wanted[i].local_port, err, sizeof(err));
+        if (next[nn].fd < 0) {
+            cb_log(cb, "监听 127.0.0.1:%d 失败: %s", wanted[i].local_port, err);
+            continue;
+        }
+        next[nn].local_port = wanted[i].local_port;
+        next[nn].remote_port = wanted[i].remote_port;
+        cb_log(cb, "本地转发 127.0.0.1:%d -> %s:%d",
+               wanted[i].local_port,
+               st->cfg.host ? st->cfg.host : "",
+               wanted[i].remote_port);
+        nn++;
+    }
+
+    for (int j = 0; j < *listen_n; ++j) {
+        if (listens[j].fd >= 0) {
+            int lp = listens[j].local_port;
+            close_fd(&listens[j].fd);
+            close_conns_for_local_port(conns, lp);
+            cb_log(cb, "已关闭转发 127.0.0.1:%d", lp);
+        }
+    }
+
+    memcpy(listens, next, sizeof(next));
+    *listen_n = nn;
+    return nn;
+}
+
 static void *tunnel_thread(void *arg) {
     (void)arg;
     TunnelState *st = &g_state;
@@ -577,14 +643,22 @@ static void *tunnel_thread(void *arg) {
     TunnelCallbacks *cb = &st->cb;
     char err[256];
     int ssh_fd = -1;
-    int listen_fd = -1;
+    ListenSlot listens[MAX_FORWARDS];
+    int listen_n = 0;
     LIBSSH2_SESSION *session = NULL;
     Conn conns[MAX_CONNS];
+    for (int i = 0; i < MAX_FORWARDS; ++i) {
+        listens[i].fd = -1;
+        listens[i].local_port = 0;
+        listens[i].remote_port = 0;
+    }
     for (int i = 0; i < MAX_CONNS; ++i) {
         conns[i].fd = -1;
         conns[i].channel = NULL;
         conns[i].local_eof = 0;
         conns[i].remote_eof = 0;
+        conns[i].local_port = 0;
+        conns[i].remote_port = 0;
     }
 
     cb_state(cb, "connecting");
@@ -640,34 +714,28 @@ static void *tunnel_thread(void *arg) {
     }
     cb_log(cb, "认证成功，用户 %s", cfg->username);
 
-    const char *dest_host = forward_dest_host(cfg);
-    if (cfg->remote_host && strcmp(dest_host, cfg->remote_host) != 0) {
-        cb_log(cb,
-               "远端地址 %s 与 SSH 主机相同，已改为 %s（云主机通常无法访问自己的公网 IP）",
-               cfg->remote_host, dest_host);
+    pthread_mutex_lock(&st->lock);
+    st->pending_count = cfg->forward_count;
+    if (st->pending_count > MAX_FORWARDS) {
+        st->pending_count = MAX_FORWARDS;
     }
+    memcpy(st->pending, cfg->forwards, sizeof(st->pending));
+    st->pending_dirty = 1;
+    pthread_mutex_unlock(&st->lock);
 
-    listen_fd = listen_local(cfg->local_port, err, sizeof(err));
-    if (listen_fd < 0) {
-        cb_log(cb, "%s", err);
+    if (apply_pending_forwards(st, listens, &listen_n, conns, cb) <= 0) {
+        cb_log(cb, "没有可用的端口映射，请至少启用一组本地端口 → 远端端口");
         cb_state(cb, "error");
         goto done;
     }
-    cb_log(cb, "本地转发 127.0.0.1:%d -> %s:%d",
-           cfg->local_port, dest_host, cfg->remote_port);
     cb_state(cb, "listening");
 
     libssh2_keepalive_config(session, 0, 30);
     libssh2_session_set_blocking(session, 0);
 
     while (!st->stop_requested) {
-        struct pollfd pfds[3 + MAX_CONNS];
+        struct pollfd pfds[2 + MAX_FORWARDS + MAX_CONNS];
         int nfds = 0;
-        int idx_listen = nfds;
-        pfds[nfds].fd = listen_fd;
-        pfds[nfds].events = POLLIN;
-        pfds[nfds].revents = 0;
-        nfds++;
 
         int idx_wake = nfds;
         pfds[nfds].fd = st->wake_r;
@@ -684,6 +752,19 @@ static void *tunnel_thread(void *arg) {
         }
         pfds[nfds].revents = 0;
         nfds++;
+
+        int idx_listen[MAX_FORWARDS];
+        for (int i = 0; i < listen_n; ++i) {
+            idx_listen[i] = -1;
+            if (listens[i].fd < 0) {
+                continue;
+            }
+            idx_listen[i] = nfds;
+            pfds[nfds].fd = listens[i].fd;
+            pfds[nfds].events = POLLIN;
+            pfds[nfds].revents = 0;
+            nfds++;
+        }
 
         int idx_conn[MAX_CONNS];
         for (int i = 0; i < MAX_CONNS; ++i) {
@@ -711,54 +792,63 @@ static void *tunnel_thread(void *arg) {
             char drain[32];
             while (read(st->wake_r, drain, sizeof(drain)) > 0) {
             }
+            apply_pending_forwards(st, listens, &listen_n, conns, cb);
         }
 
         int idle = 0;
         libssh2_keepalive_send(session, &idle);
 
-        if (pfds[idx_listen].revents & POLLIN) {
+        for (int li = 0; li < listen_n; ++li) {
+            if (idx_listen[li] < 0 || !(pfds[idx_listen[li]].revents & POLLIN)) {
+                continue;
+            }
             struct sockaddr_in peer;
             socklen_t plen = sizeof(peer);
-            int cfd = accept(listen_fd, (struct sockaddr *)&peer, &plen);
-            if (cfd >= 0) {
-                int slot = find_free_conn(conns);
-                if (slot < 0) {
-                    cb_log(cb, "连接数已满，拒绝新连接");
-                    close(cfd);
-                } else {
-                    set_nonblock(cfd);
-                    set_nodelay(cfd);
-                    char orig_ip[INET_ADDRSTRLEN];
-                    if (!inet_ntop(AF_INET, &peer.sin_addr, orig_ip, sizeof(orig_ip))) {
-                        snprintf(orig_ip, sizeof(orig_ip), "127.0.0.1");
-                    }
-                    int orig_port = ntohs(peer.sin_port);
-                    LIBSSH2_CHANNEL *ch = open_forward_channel(
-                        session,
-                        dest_host,
-                        cfg->remote_port,
-                        orig_ip,
-                        orig_port,
-                        err,
-                        sizeof(err));
-                    if (!ch) {
-                        cb_log(cb, "direct-tcpip 失败: %s", err);
-                        close(cfd);
-                        int code = libssh2_session_last_errno(session);
-                        if (session_dead(code)) {
-                            cb_state(cb, "error");
-                            goto done;
-                        }
-                    } else {
-                        conns[slot].fd = cfd;
-                        conns[slot].channel = ch;
-                        conns[slot].local_eof = 0;
-                        conns[slot].remote_eof = 0;
-                        cb_log(cb, "已建立转发 %s:%d -> %s:%d",
-                               orig_ip, orig_port, dest_host, cfg->remote_port);
-                    }
-                }
+            int cfd = accept(listens[li].fd, (struct sockaddr *)&peer, &plen);
+            if (cfd < 0) {
+                continue;
             }
+            int slot = find_free_conn(conns);
+            if (slot < 0) {
+                cb_log(cb, "连接数已满，拒绝新连接");
+                close(cfd);
+                continue;
+            }
+            set_nonblock(cfd);
+            set_nodelay(cfd);
+            char orig_ip[INET_ADDRSTRLEN];
+            if (!inet_ntop(AF_INET, &peer.sin_addr, orig_ip, sizeof(orig_ip))) {
+                snprintf(orig_ip, sizeof(orig_ip), "127.0.0.1");
+            }
+            int orig_port = ntohs(peer.sin_port);
+            int remote_port = listens[li].remote_port;
+            int local_port = listens[li].local_port;
+            LIBSSH2_CHANNEL *ch = open_forward_channel(
+                session,
+                "127.0.0.1",
+                remote_port,
+                orig_ip,
+                orig_port,
+                err,
+                sizeof(err));
+            if (!ch) {
+                cb_log(cb, "direct-tcpip 失败: %s", err);
+                close(cfd);
+                int code = libssh2_session_last_errno(session);
+                if (session_dead(code)) {
+                    cb_state(cb, "error");
+                    goto done;
+                }
+                continue;
+            }
+            conns[slot].fd = cfd;
+            conns[slot].channel = ch;
+            conns[slot].local_eof = 0;
+            conns[slot].remote_eof = 0;
+            conns[slot].local_port = local_port;
+            conns[slot].remote_port = remote_port;
+            cb_log(cb, "已建立转发 127.0.0.1:%d -> %s:%d",
+                   local_port, cfg->host, remote_port);
         }
 
         int ssh_ready = (pfds[idx_ssh].revents & (POLLIN | POLLOUT | POLLHUP | POLLERR)) != 0;
@@ -795,7 +885,9 @@ done:
     for (int i = 0; i < MAX_CONNS; ++i) {
         close_conn(&conns[i]);
     }
-    close_fd(&listen_fd);
+    for (int i = 0; i < listen_n; ++i) {
+        close_fd(&listens[i].fd);
+    }
     if (session) {
         libssh2_session_disconnect(session, "a-lite-ssh stop");
         libssh2_session_free(session);
@@ -819,6 +911,9 @@ int tunnel_start(const TunnelConfig *cfg, const TunnelCallbacks *cb) {
     g_state.cfg = cfg_dup(cfg);
     g_state.cb = *cb;
     g_state.stop_requested = 0;
+    g_state.pending_count = g_state.cfg.forward_count;
+    memcpy(g_state.pending, g_state.cfg.forwards, sizeof(g_state.pending));
+    g_state.pending_dirty = 1;
 
     int pipefd[2];
     if (pipe(pipefd) != 0) {
@@ -858,4 +953,28 @@ int tunnel_is_running(void) {
     int r = g_state.running;
     pthread_mutex_unlock(&g_state.lock);
     return r;
+}
+
+int tunnel_replace_forwards(const int *local_ports, const int *remote_ports, int count) {
+    if (count < 0 || count > MAX_FORWARDS) {
+        return -1;
+    }
+    pthread_mutex_lock(&g_state.lock);
+    if (!g_state.running) {
+        pthread_mutex_unlock(&g_state.lock);
+        return -2;
+    }
+    g_state.pending_count = 0;
+    for (int i = 0; i < count; ++i) {
+        g_state.pending[i].local_port = local_ports[i];
+        g_state.pending[i].remote_port = remote_ports[i];
+        g_state.pending_count++;
+    }
+    g_state.pending_dirty = 1;
+    if (g_state.wake_w >= 0) {
+        char x = 1;
+        (void)write(g_state.wake_w, &x, 1);
+    }
+    pthread_mutex_unlock(&g_state.lock);
+    return 0;
 }

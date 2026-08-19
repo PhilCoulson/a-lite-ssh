@@ -5,23 +5,28 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
+import android.view.LayoutInflater
 import android.view.View
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import androidx.core.content.edit
+import androidx.core.widget.doAfterTextChanged
 import com.alite.ssh.databinding.ActivityMainBinding
+import com.alite.ssh.databinding.ItemPortMappingBinding
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import java.util.UUID
 
 class MainActivity : AppCompatActivity(), TunnelHub.Observer {
     private lateinit var binding: ActivityMainBinding
+    private val mappings = mutableListOf<PortMapping>()
     private val timeFmt = SimpleDateFormat("HH:mm:ss", Locale.getDefault())
     private val notifyPermission = registerForActivityResult(
         ActivityResultContracts.RequestPermission(),
-    ) { /* tunnel can still run without a notification on older devices */ }
+    ) { }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -30,11 +35,12 @@ class MainActivity : AppCompatActivity(), TunnelHub.Observer {
         setSupportActionBar(binding.toolbar)
         restoreForm()
         updateAuthFields()
+        renderMappings()
 
         binding.authGroup.setOnCheckedChangeListener { _, _ -> updateAuthFields() }
         binding.connectButton.setOnClickListener { toggleTunnel() }
-        binding.openWebButton.setOnClickListener { openWeb() }
-
+        binding.addMappingButton.setOnClickListener { addMapping() }
+        binding.hostInput.doAfterTextChanged { renderMappings() }
         requestNotificationPermission()
     }
 
@@ -48,29 +54,30 @@ class MainActivity : AppCompatActivity(), TunnelHub.Observer {
         super.onStop()
     }
 
+    private var lastUiState: String? = null
+
     override fun onTunnelEvent(snapshot: TunnelHub.Snapshot) {
         runOnUiThread {
-            val running = snapshot.state == "connecting" ||
-                snapshot.state == "authenticating" ||
-                snapshot.state == "listening"
+            val running = isRunningState(snapshot.state)
             binding.connectButton.text = getString(
                 if (running) R.string.action_disconnect else R.string.action_connect,
             )
             binding.statusText.text = getString(R.string.status_fmt, snapshot.state)
-            binding.openWebButton.isEnabled = snapshot.state == "listening"
             binding.logView.text = snapshot.logs.joinToString("\n")
             binding.logScroll.post { binding.logScroll.fullScroll(View.FOCUS_DOWN) }
-            setFormEnabled(!running)
+            if (snapshot.state != lastUiState) {
+                lastUiState = snapshot.state
+                setSshFormEnabled(!running)
+                renderMappings()
+            }
         }
     }
 
     private fun toggleTunnel() {
-        val running = TunnelHub.state == "connecting" ||
-            TunnelHub.state == "authenticating" ||
-            TunnelHub.state == "listening"
-        if (running) {
-            val intent = Intent(this, SshTunnelService::class.java).setAction(SshTunnelService.ACTION_STOP)
-            startService(intent)
+        if (isRunningState(TunnelHub.state)) {
+            startService(
+                Intent(this, SshTunnelService::class.java).setAction(SshTunnelService.ACTION_STOP),
+            )
             return
         }
         val config = readForm() ?: return
@@ -79,35 +86,43 @@ class MainActivity : AppCompatActivity(), TunnelHub.Observer {
         TunnelHub.resetLogs()
         TunnelHub.appendLog("${timeFmt.format(Date())} 开始连接")
         TunnelHub.setState("connecting")
-        val intent = Intent(this, SshTunnelService::class.java).setAction(SshTunnelService.ACTION_START)
-        ContextCompat.startForegroundService(this, intent)
+        ContextCompat.startForegroundService(
+            this,
+            Intent(this, SshTunnelService::class.java).setAction(SshTunnelService.ACTION_START),
+        )
     }
 
-    private fun openWeb() {
-        val port = binding.localPortInput.text.toString().toIntOrNull() ?: return
-        startActivity(
-            Intent(this, BrowserActivity::class.java).putExtra(BrowserActivity.EXTRA_PORT, port),
-        )
+    private fun addMapping() {
+        if (mappings.size >= MAX_MAPPINGS) {
+            Toast.makeText(this, R.string.err_too_many_mappings, Toast.LENGTH_SHORT).show()
+            return
+        }
+        val local = binding.newLocalPortInput.text.toString().toIntOrNull()
+        val remote = binding.newRemotePortInput.text.toString().toIntOrNull()
+        if (local == null || remote == null || local !in 1..65535 || remote !in 1..65535) {
+            Toast.makeText(this, R.string.err_bad_port, Toast.LENGTH_SHORT).show()
+            return
+        }
+        if (mappings.any { it.localPort == local }) {
+            Toast.makeText(this, R.string.err_dup_local_port, Toast.LENGTH_SHORT).show()
+            return
+        }
+        mappings.add(PortMapping(localPort = local, remotePort = remote, enabled = true))
+        persistForm()
+        renderMappings()
+        pushForwardsIfRunning()
     }
 
     private fun readForm(): TunnelConfig? {
         val host = binding.hostInput.text.toString().trim()
         val username = binding.userInput.text.toString().trim()
-        var remoteHost = binding.remoteHostInput.text.toString().trim().ifEmpty { "127.0.0.1" }
-        if (remoteHost.equals(host, ignoreCase = true) ||
-            remoteHost.equals("localhost", ignoreCase = true)
-        ) {
-            if (!remoteHost.equals("127.0.0.1")) {
-                remoteHost = "127.0.0.1"
-                binding.remoteHostInput.setText(remoteHost)
-                Toast.makeText(this, R.string.remote_host_rewritten, Toast.LENGTH_LONG).show()
-            }
-        }
         val sshPort = binding.portInput.text.toString().toIntOrNull() ?: 22
-        val localPort = binding.localPortInput.text.toString().toIntOrNull() ?: 8080
-        val remotePort = binding.remotePortInput.text.toString().toIntOrNull() ?: 80
         if (host.isEmpty() || username.isEmpty()) {
             Toast.makeText(this, R.string.err_required, Toast.LENGTH_SHORT).show()
+            return null
+        }
+        if (mappings.none { it.enabled }) {
+            Toast.makeText(this, R.string.err_need_mapping, Toast.LENGTH_SHORT).show()
             return null
         }
         val useKey = binding.authKey.isChecked
@@ -128,9 +143,7 @@ class MainActivity : AppCompatActivity(), TunnelHub.Observer {
             password = if (useKey) null else password,
             privateKey = if (useKey) privateKey else null,
             passphrase = binding.passphraseInput.text.toString().ifEmpty { null },
-            localPort = localPort,
-            remoteHost = remoteHost,
-            remotePort = remotePort,
+            mappings = mappings.toList(),
             trustOnFirstUse = binding.tofuCheck.isChecked,
             ignoreHostKeyMismatch = binding.skipMismatchCheck.isChecked,
         )
@@ -142,9 +155,7 @@ class MainActivity : AppCompatActivity(), TunnelHub.Observer {
             putString(KEY_PORT, binding.portInput.text.toString())
             putString(KEY_USER, binding.userInput.text.toString())
             putBoolean(KEY_USE_KEY, binding.authKey.isChecked)
-            putString(KEY_LOCAL, binding.localPortInput.text.toString())
-            putString(KEY_REMOTE_HOST, binding.remoteHostInput.text.toString())
-            putString(KEY_REMOTE_PORT, binding.remotePortInput.text.toString())
+            putString(KEY_MAPPINGS, encodeMappings(mappings))
             putBoolean(KEY_TOFU, binding.tofuCheck.isChecked)
             putBoolean(KEY_SKIP, binding.skipMismatchCheck.isChecked)
         }
@@ -155,9 +166,6 @@ class MainActivity : AppCompatActivity(), TunnelHub.Observer {
         binding.hostInput.setText(p.getString(KEY_HOST, ""))
         binding.portInput.setText(p.getString(KEY_PORT, "22"))
         binding.userInput.setText(p.getString(KEY_USER, ""))
-        binding.localPortInput.setText(p.getString(KEY_LOCAL, "8080"))
-        binding.remoteHostInput.setText(p.getString(KEY_REMOTE_HOST, "127.0.0.1"))
-        binding.remotePortInput.setText(p.getString(KEY_REMOTE_PORT, "80"))
         binding.tofuCheck.isChecked = p.getBoolean(KEY_TOFU, true)
         binding.skipMismatchCheck.isChecked = p.getBoolean(KEY_SKIP, false)
         if (p.getBoolean(KEY_USE_KEY, false)) {
@@ -165,6 +173,55 @@ class MainActivity : AppCompatActivity(), TunnelHub.Observer {
         } else {
             binding.authPassword.isChecked = true
         }
+        mappings.clear()
+        mappings.addAll(decodeMappings(p.getString(KEY_MAPPINGS, null), p))
+    }
+
+    private fun renderMappings() {
+        val host = binding.hostInput.text?.toString()?.trim().orEmpty()
+        val running = isRunningState(TunnelHub.state)
+        binding.mappingList.removeAllViews()
+        val inflater = LayoutInflater.from(this)
+        mappings.toList().forEach { mapping ->
+            val row = ItemPortMappingBinding.inflate(inflater, binding.mappingList, false)
+            row.mappingText.text = mapping.display(host)
+            row.enableSwitch.setOnCheckedChangeListener(null)
+            row.enableSwitch.isChecked = mapping.enabled
+            row.enableSwitch.setOnCheckedChangeListener { _, checked ->
+                val idx = mappings.indexOfFirst { it.id == mapping.id }
+                if (idx >= 0) {
+                    mappings[idx] = mappings[idx].copy(enabled = checked)
+                    persistForm()
+                    renderMappings()
+                    pushForwardsIfRunning()
+                }
+            }
+            row.openButton.isEnabled = running && mapping.enabled
+            row.openButton.setOnClickListener {
+                startActivity(
+                    Intent(this, BrowserActivity::class.java)
+                        .putExtra(BrowserActivity.EXTRA_PORT, mapping.localPort),
+                )
+            }
+            row.deleteButton.setOnClickListener {
+                mappings.removeAll { it.id == mapping.id }
+                persistForm()
+                renderMappings()
+                pushForwardsIfRunning()
+            }
+            binding.mappingList.addView(row.root)
+        }
+    }
+
+    private fun pushForwardsIfRunning() {
+        if (!isRunningState(TunnelHub.state)) {
+            return
+        }
+        val current = TunnelHub.config ?: return
+        TunnelHub.config = current.copy(mappings = mappings.toList())
+        startService(
+            Intent(this, SshTunnelService::class.java).setAction(SshTunnelService.ACTION_UPDATE_FORWARDS),
+        )
     }
 
     private fun updateAuthFields() {
@@ -174,16 +231,13 @@ class MainActivity : AppCompatActivity(), TunnelHub.Observer {
         binding.passphraseLayout.visibility = if (key) View.VISIBLE else View.GONE
     }
 
-    private fun setFormEnabled(enabled: Boolean) {
+    private fun setSshFormEnabled(enabled: Boolean) {
         binding.hostInput.isEnabled = enabled
         binding.portInput.isEnabled = enabled
         binding.userInput.isEnabled = enabled
         binding.passwordInput.isEnabled = enabled
         binding.keyInput.isEnabled = enabled
         binding.passphraseInput.isEnabled = enabled
-        binding.localPortInput.isEnabled = enabled
-        binding.remoteHostInput.isEnabled = enabled
-        binding.remotePortInput.isEnabled = enabled
         binding.authPassword.isEnabled = enabled
         binding.authKey.isEnabled = enabled
         binding.tofuCheck.isEnabled = enabled
@@ -207,10 +261,37 @@ class MainActivity : AppCompatActivity(), TunnelHub.Observer {
         private const val KEY_PORT = "port"
         private const val KEY_USER = "user"
         private const val KEY_USE_KEY = "use_key"
+        private const val KEY_MAPPINGS = "mappings"
         private const val KEY_LOCAL = "local_port"
-        private const val KEY_REMOTE_HOST = "remote_host"
         private const val KEY_REMOTE_PORT = "remote_port"
         private const val KEY_TOFU = "tofu"
         private const val KEY_SKIP = "skip"
+        private const val MAX_MAPPINGS = 16
+
+        private fun isRunningState(state: String) =
+            state == "connecting" || state == "authenticating" || state == "listening"
+
+        fun encodeMappings(items: List<PortMapping>): String =
+            items.joinToString(";") { "${it.localPort}:${it.remotePort}:${if (it.enabled) 1 else 0}:${it.id}" }
+
+        fun decodeMappings(raw: String?, prefs: android.content.SharedPreferences): List<PortMapping> {
+            if (!raw.isNullOrBlank()) {
+                return raw.split(';').mapNotNull { part ->
+                    val bits = part.split(':')
+                    if (bits.size < 3) {
+                        null
+                    } else {
+                        val local = bits[0].toIntOrNull() ?: return@mapNotNull null
+                        val remote = bits[1].toIntOrNull() ?: return@mapNotNull null
+                        val enabled = bits[2] != "0"
+                        val id = bits.getOrNull(3)?.takeIf { it.isNotBlank() } ?: UUID.randomUUID().toString()
+                        PortMapping(id = id, localPort = local, remotePort = remote, enabled = enabled)
+                    }
+                }
+            }
+            val local = prefs.getString(KEY_LOCAL, "8080")?.toIntOrNull() ?: 8080
+            val remote = prefs.getString(KEY_REMOTE_PORT, "80")?.toIntOrNull() ?: 80
+            return listOf(PortMapping(localPort = local, remotePort = remote, enabled = true))
+        }
     }
 }
