@@ -10,15 +10,18 @@ import android.content.res.ColorStateList
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.view.HapticFeedbackConstants
 import android.view.LayoutInflater
 import android.view.Menu
 import android.view.MenuItem
+import android.view.View
 import android.widget.ScrollView
 import android.widget.TextView
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
+import androidx.appcompat.widget.PopupMenu
 import androidx.core.content.ContextCompat
 import androidx.core.content.edit
 import androidx.core.view.ViewCompat
@@ -26,7 +29,6 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.isVisible
 import androidx.core.view.updatePadding
 import androidx.core.widget.ImageViewCompat
-import androidx.core.widget.doAfterTextChanged
 import com.alite.ssh.databinding.ActivityMainBinding
 import com.alite.ssh.databinding.DialogAddMappingBinding
 import com.alite.ssh.databinding.DialogAdvancedBinding
@@ -69,8 +71,7 @@ class MainActivity : AppCompatActivity(), TunnelHub.Observer {
 
         binding.authGroup.addOnButtonCheckedListener { _, _, _ -> updateAuthFields() }
         binding.connectButton.setOnClickListener { toggleTunnel() }
-        binding.addMappingButton.setOnClickListener { showAddMappingDialog() }
-        binding.hostInput.doAfterTextChanged { renderMappings() }
+        binding.addMappingButton.setOnClickListener { showMappingDialog() }
         requestNotificationPermission()
     }
 
@@ -206,11 +207,10 @@ class MainActivity : AppCompatActivity(), TunnelHub.Observer {
     }
 
     private fun renderMappings() {
-        val host = binding.hostInput.text?.toString()?.trim().orEmpty()
-            .ifBlank { getString(R.string.ssh_group_title) }
         val inflater = LayoutInflater.from(this)
         binding.mappingEmpty.isVisible = mappings.isEmpty()
         binding.mappingList.isVisible = mappings.isNotEmpty()
+        binding.mappingReorderHint.isVisible = mappings.size > 1
         binding.mappingList.removeAllViews()
         mappings.toList().forEach { mapping ->
             val row = ItemPortMappingBinding.inflate(inflater, binding.mappingList, false)
@@ -218,10 +218,19 @@ class MainActivity : AppCompatActivity(), TunnelHub.Observer {
             row.mappingRouteView.text = getString(
                 R.string.mapping_route,
                 mapping.localPort,
-                host,
+                mapping.effectiveRemoteHost(),
                 mapping.remotePort,
             )
             row.root.alpha = if (mapping.enabled) 1f else 0.62f
+            val orderClick = View.OnLongClickListener { view ->
+                view.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+                showMappingOrderMenu(view, mapping)
+                true
+            }
+            row.root.setOnLongClickListener(orderClick)
+            row.mappingNameView.setOnLongClickListener(orderClick)
+            row.mappingRouteView.setOnLongClickListener(orderClick)
+            row.editButton.setOnClickListener { showMappingDialog(mapping) }
             row.enableButton.setOnClickListener(null)
             row.enableButton.isChecked = mapping.enabled
             row.enableButton.text = getString(
@@ -262,9 +271,8 @@ class MainActivity : AppCompatActivity(), TunnelHub.Observer {
     }
 
     private fun confirmDelete(mapping: PortMapping) {
-        val host = binding.hostInput.text?.toString()?.trim().orEmpty()
         val message = buildString {
-            append(mapping.display(host))
+            append(mapping.display())
             if (isBusyState(TunnelHub.state)) {
                 append("\n\n")
                 append(getString(R.string.delete_mapping_running))
@@ -284,27 +292,40 @@ class MainActivity : AppCompatActivity(), TunnelHub.Observer {
             .show()
     }
 
-    private fun showAddMappingDialog() {
-        if (mappings.size >= MAX_MAPPINGS) {
+    private fun showMappingDialog(existing: PortMapping? = null) {
+        if (existing == null && mappings.size >= MAX_MAPPINGS) {
             snack(R.string.err_too_many_mappings)
             return
         }
         val view = DialogAddMappingBinding.inflate(layoutInflater)
-        view.localPortInput.setText(suggestedLocalPort().toString())
-        view.remotePortInput.setText(suggestedRemotePort().toString())
+        if (existing != null) {
+            view.nameInput.setText(existing.name)
+            view.localPortInput.setText(existing.localPort.toString())
+            view.remotePortInput.setText(existing.remotePort.toString())
+            view.remoteHostInput.setText(existing.effectiveRemoteHost())
+        } else {
+            view.localPortInput.setText(suggestedLocalPort().toString())
+            view.remotePortInput.setText(suggestedRemotePort().toString())
+            view.remoteHostInput.setText(PortMapping.DEFAULT_REMOTE_HOST)
+        }
         val dialog = MaterialAlertDialogBuilder(this)
-            .setTitle(R.string.action_add_mapping)
+            .setTitle(if (existing == null) R.string.action_add_mapping else R.string.action_edit_mapping)
             .setView(view.root)
             .setNegativeButton(R.string.action_cancel, null)
-            .setPositiveButton(R.string.action_add, null)
+            .setPositiveButton(
+                if (existing == null) R.string.action_add else R.string.action_save,
+                null,
+            )
             .create()
         dialog.setOnShowListener {
             dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
                 val name = view.nameInput.text.toString().trim()
                 val local = view.localPortInput.text.toString().toIntOrNull()
                 val remote = view.remotePortInput.text.toString().toIntOrNull()
+                val remoteHost = view.remoteHostInput.text.toString().trim()
                 view.localPortLayout.error = null
                 view.remotePortLayout.error = null
+                view.remoteHostLayout.error = null
                 if (local == null || local !in 1..65535) {
                     view.localPortLayout.error = getString(R.string.err_bad_port)
                     return@setOnClickListener
@@ -313,26 +334,92 @@ class MainActivity : AppCompatActivity(), TunnelHub.Observer {
                     view.remotePortLayout.error = getString(R.string.err_bad_port)
                     return@setOnClickListener
                 }
-                if (mappings.any { it.localPort == local }) {
+                if (remoteHost.isEmpty()) {
+                    view.remoteHostLayout.error = getString(R.string.err_need_remote_host)
+                    return@setOnClickListener
+                }
+                if (mappings.any { it.localPort == local && it.id != existing?.id }) {
                     view.localPortLayout.error = getString(R.string.err_dup_local_port)
                     return@setOnClickListener
                 }
-                val mapping = PortMapping(
-                    name = name,
-                    localPort = local,
-                    remotePort = remote,
-                    enabled = true,
-                )
-                mappings.add(mapping)
+                if (existing == null) {
+                    val mapping = PortMapping(
+                        name = name,
+                        localPort = local,
+                        remoteHost = remoteHost,
+                        remotePort = remote,
+                        enabled = true,
+                    )
+                    mappings.add(mapping)
+                    snack(getString(R.string.msg_mapping_added, mapping.title()))
+                } else {
+                    val idx = mappings.indexOfFirst { it.id == existing.id }
+                    if (idx >= 0) {
+                        mappings[idx] = existing.copy(
+                            name = name,
+                            localPort = local,
+                            remoteHost = remoteHost,
+                            remotePort = remote,
+                        )
+                        snack(getString(R.string.msg_mapping_updated, mappings[idx].title()))
+                    }
+                }
                 persistForm()
                 renderMappings()
                 pushForwardsIfRunning()
                 dialog.dismiss()
-                snack(getString(R.string.msg_mapping_added, mapping.title()))
             }
         }
         dialog.show()
-        view.nameInput.requestFocus()
+        if (existing == null) {
+            view.nameInput.requestFocus()
+        }
+    }
+
+    private fun showMappingOrderMenu(anchor: View, mapping: PortMapping) {
+        val index = mappings.indexOfFirst { it.id == mapping.id }
+        if (index < 0) {
+            return
+        }
+        PopupMenu(this, anchor).apply {
+            inflate(R.menu.mapping_order)
+            menu.findItem(R.id.action_pin_top).isEnabled = index != 0
+            menu.findItem(R.id.action_move_up).isEnabled = index > 0
+            menu.findItem(R.id.action_move_down).isEnabled = index < mappings.lastIndex
+            setOnMenuItemClickListener { item ->
+                when (item.itemId) {
+                    R.id.action_pin_top -> {
+                        moveMapping(mapping.id, 0)
+                        snack(R.string.msg_mapping_pinned)
+                        true
+                    }
+                    R.id.action_move_up -> {
+                        moveMapping(mapping.id, index - 1)
+                        true
+                    }
+                    R.id.action_move_down -> {
+                        moveMapping(mapping.id, index + 1)
+                        true
+                    }
+                    else -> false
+                }
+            }
+            show()
+        }
+    }
+
+    private fun moveMapping(id: String, toIndex: Int) {
+        val from = mappings.indexOfFirst { it.id == id }
+        if (from < 0 || from == toIndex) {
+            return
+        }
+        val item = mappings.removeAt(from)
+        mappings.add(toIndex.coerceIn(0, mappings.size), item)
+        persistForm()
+        renderMappings()
+        if (isBusyState(TunnelHub.state)) {
+            TunnelHub.config = TunnelHub.config?.copy(mappings = mappings.toList())
+        }
     }
 
     private fun showAdvanced() {
@@ -541,6 +628,7 @@ class MainActivity : AppCompatActivity(), TunnelHub.Observer {
                     if (it.enabled) "1" else "0",
                     it.id,
                     Uri.encode(it.name).orEmpty(),
+                    Uri.encode(it.effectiveRemoteHost()).orEmpty(),
                 ).joinToString(":")
             }
 
@@ -556,10 +644,14 @@ class MainActivity : AppCompatActivity(), TunnelHub.Observer {
                         val enabled = bits[2] != "0"
                         val id = bits.getOrNull(3)?.takeIf { it.isNotBlank() } ?: UUID.randomUUID().toString()
                         val name = bits.getOrNull(4)?.let { Uri.decode(it) }.orEmpty()
+                        val remoteHost = bits.getOrNull(5)?.let { Uri.decode(it) }
+                            ?.ifBlank { PortMapping.DEFAULT_REMOTE_HOST }
+                            ?: PortMapping.DEFAULT_REMOTE_HOST
                         PortMapping(
                             id = id,
                             name = name,
                             localPort = local,
+                            remoteHost = remoteHost,
                             remotePort = remote,
                             enabled = enabled,
                         )

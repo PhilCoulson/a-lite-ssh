@@ -343,6 +343,17 @@
                         android:layout_marginTop="4dp"
                         android:animateLayoutChanges="true"
                         android:orientation="vertical" />
+
+                    <TextView
+                        android:id="@+id/mappingReorderHint"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="2dp"
+                        android:layout_marginBottom="2dp"
+                        android:text="@string/mapping_reorder_hint"
+                        android:textAppearance="@style/TextAppearance.Material3.BodySmall"
+                        android:textColor="@color/on_surface_variant"
+                        android:visibility="gone" />
                 </LinearLayout>
             </com.google.android.material.card.MaterialCardView>
         </LinearLayout>

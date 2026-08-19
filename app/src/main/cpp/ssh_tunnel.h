@@ -8,10 +8,12 @@ extern "C" {
 #endif
 
 #define ALITE_MAX_FORWARDS 16
+#define ALITE_HOST_LEN 256
 
 typedef struct PortForward {
     int local_port;
     int remote_port;
+    char remote_host[ALITE_HOST_LEN];
 } PortForward;
 
 typedef struct TunnelConfig {
@@ -40,7 +42,7 @@ void tunnel_stop(void);
 int tunnel_is_running(void);
 
 /* Replace listening forwards on a running tunnel. Empty count is allowed. */
-int tunnel_replace_forwards(const int *local_ports, const int *remote_ports, int count);
+int tunnel_replace_forwards(const PortForward *forwards, int count);
 
 #ifdef __cplusplus
 }

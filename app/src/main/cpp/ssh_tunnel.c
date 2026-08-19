@@ -40,6 +40,7 @@ typedef struct ListenSlot {
     int fd;
     int local_port;
     int remote_port;
+    char remote_host[ALITE_HOST_LEN];
 } ListenSlot;
 
 typedef struct TunnelState {
@@ -594,16 +595,26 @@ static int apply_pending_forwards(
     for (int i = 0; i < wc; ++i) {
         int reused = -1;
         for (int j = 0; j < *listen_n; ++j) {
-            if (listens[j].fd >= 0 &&
-                listens[j].local_port == wanted[i].local_port &&
-                listens[j].remote_port == wanted[i].remote_port) {
+            if (listens[j].fd >= 0 && listens[j].local_port == wanted[i].local_port) {
                 reused = j;
                 break;
             }
         }
         if (reused >= 0) {
+            int dest_changed =
+                listens[reused].remote_port != wanted[i].remote_port ||
+                strncmp(listens[reused].remote_host, wanted[i].remote_host, ALITE_HOST_LEN) != 0;
             next[nn] = listens[reused];
+            next[nn].remote_port = wanted[i].remote_port;
+            memcpy(next[nn].remote_host, wanted[i].remote_host, ALITE_HOST_LEN);
             listens[reused].fd = -1;
+            if (dest_changed) {
+                close_conns_for_local_port(conns, next[nn].local_port);
+                cb_log(cb, "已更新转发 127.0.0.1:%d -> %s:%d",
+                       next[nn].local_port,
+                       next[nn].remote_host,
+                       next[nn].remote_port);
+            }
             nn++;
             continue;
         }
@@ -615,9 +626,10 @@ static int apply_pending_forwards(
         }
         next[nn].local_port = wanted[i].local_port;
         next[nn].remote_port = wanted[i].remote_port;
+        memcpy(next[nn].remote_host, wanted[i].remote_host, ALITE_HOST_LEN);
         cb_log(cb, "本地转发 127.0.0.1:%d -> %s:%d",
                wanted[i].local_port,
-               st->cfg.host ? st->cfg.host : "",
+               wanted[i].remote_host,
                wanted[i].remote_port);
         nn++;
     }
@@ -647,10 +659,9 @@ static void *tunnel_thread(void *arg) {
     int listen_n = 0;
     LIBSSH2_SESSION *session = NULL;
     Conn conns[MAX_CONNS];
+    memset(listens, 0, sizeof(listens));
     for (int i = 0; i < MAX_FORWARDS; ++i) {
         listens[i].fd = -1;
-        listens[i].local_port = 0;
-        listens[i].remote_port = 0;
     }
     for (int i = 0; i < MAX_CONNS; ++i) {
         conns[i].fd = -1;
@@ -823,9 +834,10 @@ static void *tunnel_thread(void *arg) {
             int orig_port = ntohs(peer.sin_port);
             int remote_port = listens[li].remote_port;
             int local_port = listens[li].local_port;
+            const char *remote_host = listens[li].remote_host[0] ? listens[li].remote_host : "127.0.0.1";
             LIBSSH2_CHANNEL *ch = open_forward_channel(
                 session,
-                "127.0.0.1",
+                remote_host,
                 remote_port,
                 orig_ip,
                 orig_port,
@@ -848,7 +860,7 @@ static void *tunnel_thread(void *arg) {
             conns[slot].local_port = local_port;
             conns[slot].remote_port = remote_port;
             cb_log(cb, "已建立转发 127.0.0.1:%d -> %s:%d",
-                   local_port, cfg->host, remote_port);
+                   local_port, remote_host, remote_port);
         }
 
         int ssh_ready = (pfds[idx_ssh].revents & (POLLIN | POLLOUT | POLLHUP | POLLERR)) != 0;
@@ -955,7 +967,7 @@ int tunnel_is_running(void) {
     return r;
 }
 
-int tunnel_replace_forwards(const int *local_ports, const int *remote_ports, int count) {
+int tunnel_replace_forwards(const PortForward *forwards, int count) {
     if (count < 0 || count > MAX_FORWARDS) {
         return -1;
     }
@@ -964,10 +976,13 @@ int tunnel_replace_forwards(const int *local_ports, const int *remote_ports, int
         pthread_mutex_unlock(&g_state.lock);
         return -2;
     }
+    memset(g_state.pending, 0, sizeof(g_state.pending));
     g_state.pending_count = 0;
     for (int i = 0; i < count; ++i) {
-        g_state.pending[i].local_port = local_ports[i];
-        g_state.pending[i].remote_port = remote_ports[i];
+        g_state.pending[i] = forwards[i];
+        if (g_state.pending[i].remote_host[0] == '\0') {
+            snprintf(g_state.pending[i].remote_host, ALITE_HOST_LEN, "127.0.0.1");
+        }
         g_state.pending_count++;
     }
     g_state.pending_dirty = 1;

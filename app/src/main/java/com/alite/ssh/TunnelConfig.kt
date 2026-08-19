@@ -6,15 +6,21 @@ data class PortMapping(
     val id: String = UUID.randomUUID().toString(),
     val name: String = "",
     val localPort: Int,
+    val remoteHost: String = DEFAULT_REMOTE_HOST,
     val remotePort: Int,
     val enabled: Boolean = true,
 ) {
-    fun title(): String = name.ifBlank { "$localPort → $remotePort" }
+    fun effectiveRemoteHost(): String = remoteHost.ifBlank { DEFAULT_REMOTE_HOST }
 
-    fun display(sshHost: String): String {
-        val host = sshHost.ifBlank { "SSH主机" }
-        val route = "127.0.0.1:$localPort  →  $host:$remotePort"
+    fun title(): String = name.ifBlank { "$localPort → ${effectiveRemoteHost()}:$remotePort" }
+
+    fun display(): String {
+        val route = "127.0.0.1:$localPort  →  ${effectiveRemoteHost()}:$remotePort"
         return if (name.isBlank()) route else "${title()}\n$route"
+    }
+
+    companion object {
+        const val DEFAULT_REMOTE_HOST = "127.0.0.1"
     }
 }
 

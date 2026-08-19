@@ -16,10 +16,15 @@ class SshNative {
         passphrase: String?,
         localPorts: IntArray,
         remotePorts: IntArray,
+        remoteHosts: Array<String>,
         listener: Listener,
     ): Int
 
-    external fun nativeReplaceForwards(localPorts: IntArray, remotePorts: IntArray): Int
+    external fun nativeReplaceForwards(
+        localPorts: IntArray,
+        remotePorts: IntArray,
+        remoteHosts: Array<String>,
+    ): Int
 
     external fun nativeStop()
 

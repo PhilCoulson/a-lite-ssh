@@ -53,6 +53,7 @@ class SshTunnelService : Service(), SshNative.Listener {
                         passphrase = config.passphrase,
                         localPorts = enabled.map { it.localPort }.toIntArray(),
                         remotePorts = enabled.map { it.remotePort }.toIntArray(),
+                        remoteHosts = enabled.map { it.effectiveRemoteHost() }.toTypedArray(),
                         listener = this,
                     )
                     if (rc != 0) {
@@ -166,6 +167,7 @@ class SshTunnelService : Service(), SshNative.Listener {
         native.nativeReplaceForwards(
             enabled.map { it.localPort }.toIntArray(),
             enabled.map { it.remotePort }.toIntArray(),
+            enabled.map { it.effectiveRemoteHost() }.toTypedArray(),
         )
         TunnelHub.config?.let { startInForeground(it) }
     }

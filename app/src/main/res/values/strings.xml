@@ -12,6 +12,7 @@
     <string name="mapping_group_title">端口映射</string>
     <string name="mapping_empty_title">还没有端口映射</string>
     <string name="mapping_empty_body">添加一组后，连接即可用系统浏览器访问云上的 Web 服务。</string>
+    <string name="mapping_reorder_hint">长按条目可置顶或调整顺序</string>
     <string name="mapping_name">名称</string>
     <string name="mapping_route">127.0.0.1:%1$d  →  %2$s:%3$d</string>
     <string name="mapping_on">开启</string>
@@ -19,9 +20,14 @@
     <string name="mapping_toggle">开启或关闭该映射</string>
     <string name="local_port">本地端口</string>
     <string name="remote_port">远端端口</string>
-    <string name="add_mapping_helper">本机 127.0.0.1:本地端口 会转到 SSH 主机上的远端端口。</string>
+    <string name="remote_host">远端地址</string>
+    <string name="remote_host_helper">SSH 登录后，在服务器上要连接的目标。服务跑在这台云主机本机时保持 127.0.0.1；若要转到内网其他机器，再改成那台的 IP 或主机名。不要填云主机公网 IP。</string>
     <string name="action_add_mapping">添加映射</string>
+    <string name="action_edit_mapping">编辑映射</string>
     <string name="action_add">添加</string>
+    <string name="action_pin_top">置顶</string>
+    <string name="action_move_up">上移</string>
+    <string name="action_move_down">下移</string>
     <string name="action_delete">删除</string>
     <string name="action_cancel">取消</string>
     <string name="delete_mapping_title">删除这组映射？</string>
@@ -54,6 +60,7 @@
     <string name="err_need_key">请粘贴 PEM 私钥</string>
     <string name="err_need_mapping">请至少添加并启用一组端口映射</string>
     <string name="err_bad_port">端口需在 1–65535 之间</string>
+    <string name="err_need_remote_host">请填写远端地址</string>
     <string name="err_dup_local_port">该本地端口已存在</string>
     <string name="err_too_many_mappings">最多支持 16 组映射</string>
     <string name="err_connect_failed">连接失败</string>
@@ -62,12 +69,15 @@
     <string name="err_no_browser">没有可用的浏览器</string>
     <string name="warn_no_enabled_mapping">已关闭全部转发，隧道仍保持连接</string>
     <string name="msg_mapping_added">已添加 %1$s</string>
+    <string name="msg_mapping_updated">已更新 %1$s</string>
     <string name="msg_mapping_deleted">已删除映射</string>
+    <string name="msg_mapping_pinned">已置顶</string>
     <string name="notification_channel">SSH 隧道</string>
     <string name="notification_title">SSH 本地转发运行中</string>
     <string name="notification_text">127.0.0.1:%2$d → %1$s</string>
     <string name="cd_status">连接状态</string>
     <string name="cd_add_mapping">添加端口映射</string>
+    <string name="cd_edit_mapping">编辑映射</string>
     <string name="cd_delete_mapping">删除映射</string>
     <string name="cd_open_mapping">用系统浏览器打开</string>
 </resources>

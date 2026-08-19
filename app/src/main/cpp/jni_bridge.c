@@ -1,6 +1,7 @@
 #include "ssh_tunnel.h"
 
 #include <jni.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -37,6 +38,7 @@ static int copy_forwards(
     JNIEnv *env,
     jintArray localPorts,
     jintArray remotePorts,
+    jobjectArray remoteHosts,
     PortForward *out,
     int *count_out) {
     if (!localPorts || !remotePorts) {
@@ -45,6 +47,9 @@ static int copy_forwards(
     jsize nlocal = (*env)->GetArrayLength(env, localPorts);
     jsize nremote = (*env)->GetArrayLength(env, remotePorts);
     if (nlocal != nremote || nlocal <= 0 || nlocal > ALITE_MAX_FORWARDS) {
+        return -1;
+    }
+    if (remoteHosts && (*env)->GetArrayLength(env, remoteHosts) != nlocal) {
         return -1;
     }
     jint *locals = (*env)->GetIntArrayElements(env, localPorts, NULL);
@@ -58,9 +63,26 @@ static int copy_forwards(
         }
         return -1;
     }
+    memset(out, 0, sizeof(PortForward) * (size_t)nlocal);
     for (jsize i = 0; i < nlocal; ++i) {
         out[i].local_port = locals[i];
         out[i].remote_port = remotes[i];
+        if (remoteHosts) {
+            jstring js = (jstring)(*env)->GetObjectArrayElement(env, remoteHosts, i);
+            if (js) {
+                const char *utf = (*env)->GetStringUTFChars(env, js, NULL);
+                if (utf && utf[0]) {
+                    snprintf(out[i].remote_host, ALITE_HOST_LEN, "%s", utf);
+                }
+                if (utf) {
+                    (*env)->ReleaseStringUTFChars(env, js, utf);
+                }
+                (*env)->DeleteLocalRef(env, js);
+            }
+        }
+        if (out[i].remote_host[0] == '\0') {
+            snprintf(out[i].remote_host, ALITE_HOST_LEN, "127.0.0.1");
+        }
     }
     *count_out = nlocal;
     (*env)->ReleaseIntArrayElements(env, localPorts, locals, JNI_ABORT);
@@ -80,6 +102,7 @@ Java_com_alite_ssh_SshNative_nativeStart(
     jstring passphrase,
     jintArray localPorts,
     jintArray remotePorts,
+    jobjectArray remoteHosts,
     jobject listener) {
     (void)thiz;
     if (!host || !username || !listener) {
@@ -100,7 +123,7 @@ Java_com_alite_ssh_SshNative_nativeStart(
     cfg.password = dup_jstring(env, password);
     cfg.private_key = dup_jstring(env, privateKey);
     cfg.passphrase = dup_jstring(env, passphrase);
-    if (copy_forwards(env, localPorts, remotePorts, cfg.forwards, &cfg.forward_count) != 0) {
+    if (copy_forwards(env, localPorts, remotePorts, remoteHosts, cfg.forwards, &cfg.forward_count) != 0) {
         tunnel_config_free(&cfg);
         release_listener(env);
         return -11;
@@ -123,25 +146,20 @@ Java_com_alite_ssh_SshNative_nativeReplaceForwards(
     JNIEnv *env,
     jobject thiz,
     jintArray localPorts,
-    jintArray remotePorts) {
+    jintArray remotePorts,
+    jobjectArray remoteHosts) {
     (void)thiz;
     int count = 0;
     PortForward forwards[ALITE_MAX_FORWARDS];
     memset(forwards, 0, sizeof(forwards));
     if (localPorts == NULL || remotePorts == NULL ||
         (*env)->GetArrayLength(env, localPorts) == 0) {
-        return tunnel_replace_forwards(NULL, NULL, 0);
+        return tunnel_replace_forwards(NULL, 0);
     }
-    if (copy_forwards(env, localPorts, remotePorts, forwards, &count) != 0) {
+    if (copy_forwards(env, localPorts, remotePorts, remoteHosts, forwards, &count) != 0) {
         return -11;
     }
-    int locals[ALITE_MAX_FORWARDS];
-    int remotes[ALITE_MAX_FORWARDS];
-    for (int i = 0; i < count; ++i) {
-        locals[i] = forwards[i].local_port;
-        remotes[i] = forwards[i].remote_port;
-    }
-    return tunnel_replace_forwards(locals, remotes, count);
+    return tunnel_replace_forwards(forwards, count);
 }
 
 JNIEXPORT void JNICALL
