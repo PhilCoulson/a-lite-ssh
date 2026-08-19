@@ -93,7 +93,16 @@ class MainActivity : AppCompatActivity(), TunnelHub.Observer {
     private fun readForm(): TunnelConfig? {
         val host = binding.hostInput.text.toString().trim()
         val username = binding.userInput.text.toString().trim()
-        val remoteHost = binding.remoteHostInput.text.toString().trim().ifEmpty { "127.0.0.1" }
+        var remoteHost = binding.remoteHostInput.text.toString().trim().ifEmpty { "127.0.0.1" }
+        if (remoteHost.equals(host, ignoreCase = true) ||
+            remoteHost.equals("localhost", ignoreCase = true)
+        ) {
+            if (!remoteHost.equals("127.0.0.1")) {
+                remoteHost = "127.0.0.1"
+                binding.remoteHostInput.setText(remoteHost)
+                Toast.makeText(this, R.string.remote_host_rewritten, Toast.LENGTH_LONG).show()
+            }
+        }
         val sshPort = binding.portInput.text.toString().toIntOrNull() ?: 22
         val localPort = binding.localPortInput.text.toString().toIntOrNull() ?: 8080
         val remotePort = binding.remotePortInput.text.toString().toIntOrNull() ?: 80

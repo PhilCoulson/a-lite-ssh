@@ -16,6 +16,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
 #include <sys/socket.h>
 #include <unistd.h>
 
@@ -237,6 +238,8 @@ static int connect_tcp(const char *host, int port, char *err, size_t errlen) {
             continue;
         }
         set_nodelay(sock);
+        int ka = 1;
+        setsockopt(sock, SOL_SOCKET, SO_KEEPALIVE, &ka, sizeof(ka));
         if (connect(sock, ai->ai_addr, ai->ai_addrlen) == 0) {
             break;
         }
@@ -331,21 +334,21 @@ static void close_conn(Conn *c) {
     c->remote_eof = 0;
 }
 
-static int waitsocket(int socket_fd, LIBSSH2_SESSION *session) {
-    struct timeval timeout;
-    timeout.tv_sec = 1;
-    timeout.tv_usec = 0;
-    fd_set rfd, wfd;
-    FD_ZERO(&rfd);
-    FD_ZERO(&wfd);
+static int wait_session(int socket_fd, LIBSSH2_SESSION *session, int timeout_ms) {
+    struct pollfd pfd;
+    memset(&pfd, 0, sizeof(pfd));
+    pfd.fd = socket_fd;
     int dir = libssh2_session_block_directions(session);
     if (dir & LIBSSH2_SESSION_BLOCK_INBOUND) {
-        FD_SET(socket_fd, &rfd);
+        pfd.events |= POLLIN;
     }
     if (dir & LIBSSH2_SESSION_BLOCK_OUTBOUND) {
-        FD_SET(socket_fd, &wfd);
+        pfd.events |= POLLOUT;
     }
-    return select(socket_fd + 1, &rfd, &wfd, NULL, &timeout);
+    if (pfd.events == 0) {
+        pfd.events = POLLIN;
+    }
+    return poll(&pfd, 1, timeout_ms);
 }
 
 static int session_last_error(LIBSSH2_SESSION *session, char *err, size_t errlen) {
@@ -353,6 +356,105 @@ static int session_last_error(LIBSSH2_SESSION *session, char *err, size_t errlen
     int code = libssh2_session_last_error(session, &msg, NULL, 0);
     snprintf(err, errlen, "libssh2(%d): %s", code, msg ? msg : "unknown");
     return code;
+}
+
+static int host_equal(const char *a, const char *b) {
+    char na[256];
+    char nb[256];
+    if (!a || !b || !a[0] || !b[0]) {
+        return 0;
+    }
+    while (*a == '[') {
+        a++;
+    }
+    while (*b == '[') {
+        b++;
+    }
+    snprintf(na, sizeof(na), "%s", a);
+    snprintf(nb, sizeof(nb), "%s", b);
+    size_t la = strlen(na);
+    size_t lb = strlen(nb);
+    if (la && na[la - 1] == ']') {
+        na[la - 1] = '\0';
+    }
+    if (lb && nb[lb - 1] == ']') {
+        nb[lb - 1] = '\0';
+    }
+    return strcasecmp(na, nb) == 0;
+}
+
+static const char *forward_dest_host(const TunnelConfig *cfg) {
+    if (!cfg->remote_host || !cfg->remote_host[0] ||
+        strcasecmp(cfg->remote_host, "localhost") == 0) {
+        return "127.0.0.1";
+    }
+    if (host_equal(cfg->remote_host, cfg->host)) {
+        return "127.0.0.1";
+    }
+    return cfg->remote_host;
+}
+
+static int session_dead(int code) {
+    return code == LIBSSH2_ERROR_SOCKET_NONE ||
+           code == LIBSSH2_ERROR_SOCKET_DISCONNECT ||
+           code == LIBSSH2_ERROR_SOCKET_RECV ||
+           code == LIBSSH2_ERROR_SOCKET_SEND ||
+           code == LIBSSH2_ERROR_BAD_SOCKET;
+}
+
+static void describe_forward_error(int code, char *err, size_t errlen) {
+    const char *hint = NULL;
+    switch (code) {
+        case LIBSSH2_ERROR_TIMEOUT:
+            hint = "打开转发通道超时。远端请填云上 Web 的监听地址，访问本机服务用 127.0.0.1，不要填云主机公网 IP";
+            break;
+        case LIBSSH2_ERROR_CHANNEL_FAILURE:
+            hint = "服务器拒绝了端口转发。请检查 sshd 的 AllowTcpForwarding，以及远端端口是否在监听";
+            break;
+        case LIBSSH2_ERROR_SOCKET_NONE:
+        case LIBSSH2_ERROR_SOCKET_DISCONNECT:
+        case LIBSSH2_ERROR_SOCKET_RECV:
+        case LIBSSH2_ERROR_BAD_SOCKET:
+            hint = "SSH 连接已断开";
+            break;
+        default:
+            break;
+    }
+    if (hint) {
+        size_t used = strlen(err);
+        if (used + 4 < errlen) {
+            snprintf(err + used, errlen - used, "。%s", hint);
+        }
+    }
+}
+
+static LIBSSH2_CHANNEL *open_forward_channel(
+    LIBSSH2_SESSION *session,
+    const char *dest_host,
+    int dest_port,
+    const char *orig_ip,
+    int orig_port,
+    char *err,
+    size_t errlen) {
+    /* Official libssh2 example opens direct-tcpip in blocking mode, then
+       switches to non-blocking for the data pump. Retrying the public API
+       after EAGAIN is not reliable and can yield TIMEOUT / SOCKET_NONE. */
+    libssh2_session_set_blocking(session, 1);
+    libssh2_session_set_timeout(session, 15000);
+    libssh2_session_set_read_timeout(session, 15);
+
+    LIBSSH2_CHANNEL *ch = libssh2_channel_direct_tcpip_ex(
+        session, dest_host, dest_port, orig_ip, orig_port);
+
+    if (!ch) {
+        int code = session_last_error(session, err, errlen);
+        describe_forward_error(code, err, errlen);
+    }
+
+    libssh2_session_set_blocking(session, 0);
+    libssh2_session_set_timeout(session, 0);
+    libssh2_session_set_read_timeout(session, 60);
+    return ch;
 }
 
 static int do_auth(LIBSSH2_SESSION *session, const TunnelConfig *cfg, char *err, size_t errlen) {
@@ -402,7 +504,7 @@ static int do_auth(LIBSSH2_SESSION *session, const TunnelConfig *cfg, char *err,
     return 0;
 }
 
-static int pump_local_to_ssh(Conn *c) {
+static int pump_local_to_ssh(Conn *c, int ssh_fd, LIBSSH2_SESSION *session) {
     char buf[IO_BUF];
     ssize_t n = recv(c->fd, buf, sizeof(buf), 0);
     if (n == 0) {
@@ -417,9 +519,14 @@ static int pump_local_to_ssh(Conn *c) {
         return -1;
     }
     ssize_t off = 0;
+    int spins = 0;
     while (off < n) {
         ssize_t w = libssh2_channel_write(c->channel, buf + off, (size_t)(n - off));
         if (w == LIBSSH2_ERROR_EAGAIN) {
+            if (++spins > 50) {
+                return 0;
+            }
+            wait_session(ssh_fd, session, 50);
             continue;
         }
         if (w < 0) {
@@ -533,6 +640,13 @@ static void *tunnel_thread(void *arg) {
     }
     cb_log(cb, "认证成功，用户 %s", cfg->username);
 
+    const char *dest_host = forward_dest_host(cfg);
+    if (cfg->remote_host && strcmp(dest_host, cfg->remote_host) != 0) {
+        cb_log(cb,
+               "远端地址 %s 与 SSH 主机相同，已改为 %s（云主机通常无法访问自己的公网 IP）",
+               cfg->remote_host, dest_host);
+    }
+
     listen_fd = listen_local(cfg->local_port, err, sizeof(err));
     if (listen_fd < 0) {
         cb_log(cb, "%s", err);
@@ -540,15 +654,14 @@ static void *tunnel_thread(void *arg) {
         goto done;
     }
     cb_log(cb, "本地转发 127.0.0.1:%d -> %s:%d",
-           cfg->local_port, cfg->remote_host, cfg->remote_port);
+           cfg->local_port, dest_host, cfg->remote_port);
     cb_state(cb, "listening");
 
-    libssh2_keepalive_config(session, 1, 15);
+    libssh2_keepalive_config(session, 0, 30);
     libssh2_session_set_blocking(session, 0);
-    set_nonblock(ssh_fd);
 
     while (!st->stop_requested) {
-        struct pollfd pfds[2 + MAX_CONNS];
+        struct pollfd pfds[3 + MAX_CONNS];
         int nfds = 0;
         int idx_listen = nfds;
         pfds[nfds].fd = listen_fd;
@@ -559,6 +672,16 @@ static void *tunnel_thread(void *arg) {
         int idx_wake = nfds;
         pfds[nfds].fd = st->wake_r;
         pfds[nfds].events = POLLIN;
+        pfds[nfds].revents = 0;
+        nfds++;
+
+        int idx_ssh = nfds;
+        pfds[nfds].fd = ssh_fd;
+        pfds[nfds].events = POLLIN;
+        int dir = libssh2_session_block_directions(session);
+        if (dir & LIBSSH2_SESSION_BLOCK_OUTBOUND) {
+            pfds[nfds].events |= POLLOUT;
+        }
         pfds[nfds].revents = 0;
         nfds++;
 
@@ -574,7 +697,7 @@ static void *tunnel_thread(void *arg) {
             }
         }
 
-        int pr = poll(pfds, (nfds_t)nfds, 200);
+        int pr = poll(pfds, (nfds_t)nfds, 500);
         if (pr < 0) {
             if (errno == EINTR) {
                 continue;
@@ -605,38 +728,40 @@ static void *tunnel_thread(void *arg) {
                 } else {
                     set_nonblock(cfd);
                     set_nodelay(cfd);
-                    const char *orig_ip = inet_ntoa(peer.sin_addr);
-                    int orig_port = ntohs(peer.sin_port);
-                    LIBSSH2_CHANNEL *ch = NULL;
-                    while (!st->stop_requested) {
-                        ch = libssh2_channel_direct_tcpip_ex(
-                            session,
-                            cfg->remote_host,
-                            cfg->remote_port,
-                            orig_ip,
-                            orig_port);
-                        if (ch) {
-                            break;
-                        }
-                        if (libssh2_session_last_errno(session) != LIBSSH2_ERROR_EAGAIN) {
-                            break;
-                        }
-                        waitsocket(ssh_fd, session);
+                    char orig_ip[INET_ADDRSTRLEN];
+                    if (!inet_ntop(AF_INET, &peer.sin_addr, orig_ip, sizeof(orig_ip))) {
+                        snprintf(orig_ip, sizeof(orig_ip), "127.0.0.1");
                     }
+                    int orig_port = ntohs(peer.sin_port);
+                    LIBSSH2_CHANNEL *ch = open_forward_channel(
+                        session,
+                        dest_host,
+                        cfg->remote_port,
+                        orig_ip,
+                        orig_port,
+                        err,
+                        sizeof(err));
                     if (!ch) {
-                        session_last_error(session, err, sizeof(err));
                         cb_log(cb, "direct-tcpip 失败: %s", err);
                         close(cfd);
+                        int code = libssh2_session_last_errno(session);
+                        if (session_dead(code)) {
+                            cb_state(cb, "error");
+                            goto done;
+                        }
                     } else {
                         conns[slot].fd = cfd;
                         conns[slot].channel = ch;
                         conns[slot].local_eof = 0;
                         conns[slot].remote_eof = 0;
+                        cb_log(cb, "已建立转发 %s:%d -> %s:%d",
+                               orig_ip, orig_port, dest_host, cfg->remote_port);
                     }
                 }
             }
         }
 
+        int ssh_ready = (pfds[idx_ssh].revents & (POLLIN | POLLOUT | POLLHUP | POLLERR)) != 0;
         for (int i = 0; i < MAX_CONNS; ++i) {
             if (conns[i].fd < 0) {
                 continue;
@@ -646,12 +771,12 @@ static void *tunnel_thread(void *arg) {
                 ready = 1;
             }
             if (ready) {
-                if (pump_local_to_ssh(&conns[i]) != 0) {
+                if (pump_local_to_ssh(&conns[i], ssh_fd, session) != 0) {
                     close_conn(&conns[i]);
                     continue;
                 }
             }
-            if (conns[i].channel) {
+            if (conns[i].channel && (ready || ssh_ready || pr == 0)) {
                 if (pump_ssh_to_local(&conns[i]) != 0) {
                     close_conn(&conns[i]);
                     continue;
@@ -660,11 +785,6 @@ static void *tunnel_thread(void *arg) {
             if (conns[i].local_eof && conns[i].remote_eof) {
                 close_conn(&conns[i]);
             }
-        }
-
-        /* Drain SSH socket so libssh2 can make progress even without local traffic. */
-        if (session) {
-            waitsocket(ssh_fd, session);
         }
     }
 

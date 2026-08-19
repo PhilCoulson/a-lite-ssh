@@ -11,6 +11,8 @@
     <string name="passphrase">私钥口令（可选）</string>
     <string name="local_port">本地端口</string>
     <string name="remote_host">远端地址</string>
+    <string name="remote_host_helper">云上 Web 的监听地址。访问本机服务填 127.0.0.1，不要填云主机公网 IP</string>
+    <string name="remote_host_rewritten">远端地址与 SSH 主机相同，已改为 127.0.0.1，避免云主机回连自己的公网 IP 失败</string>
     <string name="remote_port">远端端口</string>
     <string name="tofu">首次连接信任并保存主机密钥</string>
     <string name="skip_mismatch">忽略主机密钥不匹配（不安全）</string>
