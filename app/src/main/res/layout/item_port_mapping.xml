@@ -36,50 +36,54 @@
             android:layout_height="wrap_content"
             android:layout_marginTop="2dp"
             android:ellipsize="end"
+            android:fontFamily="monospace"
             android:maxLines="1"
             android:textAppearance="@style/TextAppearance.Material3.BodySmall"
             android:textColor="@color/on_surface_variant"
-            tools:text="本机 8080  →  云主机 80" />
+            tools:text="127.0.0.1:8080  →  example.com:80" />
 
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="4dp"
+            android:layout_marginTop="6dp"
             android:gravity="center_vertical"
-            android:orientation="horizontal">
+            android:orientation="horizontal"
+            android:weightSum="3">
 
-            <com.google.android.material.materialswitch.MaterialSwitch
-                android:id="@+id/enableSwitch"
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/enableButton"
+                style="@style/Widget.ALiteSsh.Button.MappingAction"
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
+                android:layout_marginEnd="4dp"
                 android:layout_weight="1"
-                android:minHeight="40dp"
-                android:text="@string/mapping_on"
-                android:textAppearance="@style/TextAppearance.Material3.LabelLarge" />
+                android:checkable="true"
+                android:contentDescription="@string/mapping_toggle"
+                android:text="@string/mapping_on" />
 
             <com.google.android.material.button.MaterialButton
                 android:id="@+id/openButton"
-                style="@style/Widget.ALiteSsh.Button.Compact"
-                android:layout_width="wrap_content"
+                style="@style/Widget.ALiteSsh.Button.MappingAction"
+                android:layout_width="0dp"
                 android:layout_height="wrap_content"
+                android:layout_marginStart="2dp"
+                android:layout_marginEnd="2dp"
+                android:layout_weight="1"
                 android:contentDescription="@string/cd_open_mapping"
                 android:text="@string/action_open_web"
                 app:icon="@drawable/ic_open" />
 
             <com.google.android.material.button.MaterialButton
                 android:id="@+id/deleteButton"
-                style="@style/Widget.Material3.Button.TextButton"
-                android:layout_width="wrap_content"
+                style="@style/Widget.ALiteSsh.Button.MappingAction"
+                android:layout_width="0dp"
                 android:layout_height="wrap_content"
+                android:layout_marginStart="4dp"
+                android:layout_weight="1"
                 android:contentDescription="@string/cd_delete_mapping"
-                android:insetTop="0dp"
-                android:insetBottom="0dp"
-                android:minHeight="36dp"
-                android:minWidth="0dp"
                 android:text="@string/action_delete"
                 android:textColor="?attr/colorError"
                 app:icon="@drawable/ic_delete"
-                app:iconPadding="2dp"
                 app:iconTint="?attr/colorError" />
         </LinearLayout>
     </LinearLayout>

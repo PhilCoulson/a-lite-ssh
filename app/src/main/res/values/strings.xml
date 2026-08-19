@@ -13,9 +13,10 @@
     <string name="mapping_empty_title">还没有端口映射</string>
     <string name="mapping_empty_body">添加一组后，连接即可用系统浏览器访问云上的 Web 服务。</string>
     <string name="mapping_name">名称</string>
-    <string name="mapping_route">本机 %1$d  →  %2$s %3$d</string>
+    <string name="mapping_route">127.0.0.1:%1$d  →  %2$s:%3$d</string>
     <string name="mapping_on">开启</string>
     <string name="mapping_off">关闭</string>
+    <string name="mapping_toggle">开启或关闭该映射</string>
     <string name="local_port">本地端口</string>
     <string name="remote_port">远端端口</string>
     <string name="add_mapping_helper">本机 127.0.0.1:本地端口 会转到 SSH 主机上的远端端口。</string>

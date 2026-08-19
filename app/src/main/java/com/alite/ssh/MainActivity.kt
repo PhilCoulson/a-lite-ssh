@@ -222,21 +222,23 @@ class MainActivity : AppCompatActivity(), TunnelHub.Observer {
                 mapping.remotePort,
             )
             row.root.alpha = if (mapping.enabled) 1f else 0.62f
-            row.enableSwitch.setOnCheckedChangeListener(null)
-            row.enableSwitch.isChecked = mapping.enabled
-            row.enableSwitch.text = getString(
+            row.enableButton.setOnClickListener(null)
+            row.enableButton.isChecked = mapping.enabled
+            row.enableButton.text = getString(
                 if (mapping.enabled) R.string.mapping_on else R.string.mapping_off,
             )
-            row.enableSwitch.setOnCheckedChangeListener { _, checked ->
+            row.enableButton.setOnClickListener {
                 val idx = mappings.indexOfFirst { it.id == mapping.id }
-                if (idx >= 0) {
-                    mappings[idx] = mappings[idx].copy(enabled = checked)
-                    persistForm()
-                    renderMappings()
-                    pushForwardsIfRunning()
-                    if (isBusyState(TunnelHub.state) && mappings.none { it.enabled }) {
-                        snack(R.string.warn_no_enabled_mapping)
-                    }
+                if (idx < 0) {
+                    return@setOnClickListener
+                }
+                val checked = !mappings[idx].enabled
+                mappings[idx] = mappings[idx].copy(enabled = checked)
+                persistForm()
+                renderMappings()
+                pushForwardsIfRunning()
+                if (isBusyState(TunnelHub.state) && mappings.none { it.enabled }) {
+                    snack(R.string.warn_no_enabled_mapping)
                 }
             }
             row.openButton.setOnClickListener { openMapping(mapping) }
