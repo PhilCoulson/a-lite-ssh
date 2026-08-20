@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+# 每次发新版本运行一次：编译 release APK 并上传到 GitHub Releases
+# 用法（在仓库根目录）：./scripts/publish-github-release.sh
+# 前置：已运行 make-release-keystore.sh，并填好 keystore.properties；已 gh auth login
 set -euo pipefail
 root="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$root"

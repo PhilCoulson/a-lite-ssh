@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# 一辈子只运行一次：在仓库根目录生成发布签名钥匙 release.jks
+# 用法：./scripts/make-release-keystore.sh
 set -euo pipefail
 root="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$root"

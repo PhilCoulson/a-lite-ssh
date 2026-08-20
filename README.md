@@ -38,28 +38,67 @@ export ANDROID_HOME=/path/to/android-sdk
 
 APK 输出：`app/build/outputs/apk/debug/app-debug.apk`。
 
-## 应用内更新
+## 应用内更新（自己发版）
 
-应用从 [GitHub Releases](https://github.com/PhilCoulson/a-lite-ssh/releases) 检查新版本，确认后下载安装包并调起系统安装。默认每天最多自动检查一次，也可在菜单里手动「检查更新」。
+手机上的应用会去 GitHub Releases 找有没有新安装包。  
+你要做的不是再手动拷 APK，而是：**在电脑上用脚本打一次包、传到 GitHub，手机点「检查更新」就能装。**
 
-更新能装上的前提是：**手机上现有应用和 Release 里的 APK 用同一把签名密钥**。本地 debug 包和 Release 包密钥不同，会提示签名不一致。做法是：第一次先装 GitHub Release 的包，之后即可在应用里更新。
+脚本在仓库根目录的 `scripts/` 里（先 `git pull` 到含这些文件的分支）：
 
-1. 生成本地发布密钥（只做一次，密钥不要提交到 Git）：
+| 文件 | 干什么 | 什么时候用 |
+| --- | --- | --- |
+| `scripts/make-release-keystore.sh` | 生成一把「发布签名钥匙」 | **一辈子只用一次** |
+| `scripts/publish-github-release.sh` | 打包 APK 并上传到 GitHub Release | **每次发新版本用一次** |
+
+签名钥匙相当于印章：手机上现在装的包，和以后下载的更新，必须是同一把钥匙盖的章，系统才允许覆盖安装。所以第一次请用脚本打出来的包安装，不要继续用平时的 debug 包。
+
+### 第一次（只需做一遍）
+
+在仓库根目录打开终端：
 
 ```bash
+chmod +x scripts/*.sh
 ./scripts/make-release-keystore.sh
 ```
 
-按提示填写 `keystore.properties`。若要用 GitHub Actions 发版，把脚本打印的值加到仓库 Secrets：`RELEASE_KEYSTORE_BASE64`、`RELEASE_STORE_PASSWORD`、`RELEASE_KEY_ALIAS`、`RELEASE_KEY_PASSWORD`。
+会生成两个**不要上传到 Git** 的本地文件：
 
-2. 升 `app/build.gradle.kts` 里的 `appVersionCode` / `appVersionName` 后，任选一种发版方式：
+- `release.jks`：钥匙本身
+- `keystore.properties`：钥匙密码配置（从模板拷出来的）
+
+用编辑器打开 `keystore.properties`，把 `storePassword` 和 `keyPassword` 填成你刚才给 `keytool` 设的密码（可以两个相同）：
+
+```
+storeFile=release.jks
+storePassword=你的密码
+keyAlias=alite
+keyPassword=你的密码
+```
+
+电脑需已登录 GitHub CLI（`gh auth login`），然后发第一版：
 
 ```bash
-# 本机打包并创建 GitHub Release
 ./scripts/publish-github-release.sh
 ```
 
-或打 tag 交给 CI：`git tag v1.2.0 && git push origin v1.2.0`（tag 必须等于 `v` + versionName）。两种方式不要同时用，以免重复创建 Release。
+脚本会编译、把 APK 传到  
+https://github.com/PhilCoulson/a-lite-ssh/releases  
+到该页面把 `a-lite-ssh-1.2.0.apk` 下到手机，**先卸载旧的 debug 版**，再安装这个包。
+
+### 以后每发一个新版本
+
+1. 改 `app/build.gradle.kts` 开头两行，两个数字都要变大，例如 `4` / `1.2.0` → `5` / `1.2.1`。
+2. 提交代码后，再运行：
+
+```bash
+./scripts/publish-github-release.sh
+```
+
+3. 手机打开应用 → 右上角菜单 → **检查更新** → 下载安装。  
+   应用大约每天也会自动查一次。
+
+不要把 `release.jks`、`keystore.properties` 提交到 GitHub，也不要弄丢；弄丢就无法给旧用户推送覆盖更新，只能让他们重新安装。
+
 
 ## 使用
 
