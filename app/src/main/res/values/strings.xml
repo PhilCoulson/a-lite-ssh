@@ -8,14 +8,14 @@
     <string name="auth_key">私钥</string>
     <string name="password">密码</string>
     <string name="remember_password">记住密码</string>
-    <string name="remember_password_helper">默认不记住。勾选后加密保存在本机，最长 7 天，到期需重新输入，以免长期不输而忘记。</string>
+    <string name="remember_password_helper">最长 7 天</string>
     <string name="msg_password_expired">密码记忆已到期，请重新输入</string>
     <string name="private_key">PEM 私钥</string>
     <string name="passphrase">私钥口令（可选）</string>
     <string name="mapping_group_title">端口映射</string>
     <string name="mapping_empty_title">还没有端口映射</string>
     <string name="mapping_empty_body">添加一组后，连接即可用系统浏览器访问云上的 Web 服务。</string>
-    <string name="mapping_reorder_hint">长按条目可置顶或调整顺序</string>
+    <string name="mapping_reorder_hint">点按地址可复制，长按可排序</string>
     <string name="mapping_name">名称</string>
     <string name="mapping_route">127.0.0.1:%1$d  →  %2$s:%3$d</string>
     <string name="mapping_on">开启</string>
@@ -43,7 +43,7 @@
     <string name="current_version">当前版本 %1$s（%2$d）</string>
     <string name="action_check_update">检查更新</string>
     <string name="update_checking">正在检查更新…</string>
-    <string name="update_up_to_date">已是最新版本</string>
+    <string name="update_up_to_date">已是最新版本 %1$s</string>
     <string name="update_no_release">还没有 GitHub Release 安装包。发布后即可应用内更新。</string>
     <string name="update_check_failed">检查更新失败：%1$s</string>
     <string name="update_available_title">发现新版本 %1$s</string>
@@ -80,6 +80,7 @@
     <string name="log_title">运行日志</string>
     <string name="log_empty">暂无日志</string>
     <string name="msg_logs_copied">日志已复制</string>
+    <string name="msg_url_copied">已复制 %1$s</string>
     <string name="err_required_host">请填写主机</string>
     <string name="err_required_user">请填写用户名</string>
     <string name="err_need_password">请填写密码</string>

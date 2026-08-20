@@ -5,8 +5,8 @@ plugins {
     id("org.jetbrains.kotlin.android")
 }
 
-val appVersionCode = 4
-val appVersionName = "1.2.0"
+val appVersionCode = 5
+val appVersionName = "1.2.1"
 
 android {
     namespace = "com.alite.ssh"

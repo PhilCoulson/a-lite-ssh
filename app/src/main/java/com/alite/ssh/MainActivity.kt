@@ -65,6 +65,7 @@ class MainActivity : AppCompatActivity(), TunnelHub.Observer {
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
         setSupportActionBar(binding.toolbar)
+        binding.toolbar.subtitle = BuildConfig.VERSION_NAME
         applyWindowInsets()
         secretStore = SecretStore(this)
         appUpdates = AppUpdateCoordinator(this)
@@ -268,6 +269,12 @@ class MainActivity : AppCompatActivity(), TunnelHub.Observer {
                 mapping.effectiveRemoteHost(),
                 mapping.remotePort,
             )
+            row.mappingRouteView.setOnClickListener {
+                val url = "http://127.0.0.1:${mapping.localPort}/"
+                getSystemService(ClipboardManager::class.java)
+                    .setPrimaryClip(ClipData.newPlainText("url", url))
+                snack(getString(R.string.msg_url_copied, url))
+            }
             row.root.alpha = if (mapping.enabled) 1f else 0.62f
             val orderClick = View.OnLongClickListener { view ->
                 view.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)

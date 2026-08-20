@@ -66,7 +66,9 @@ class AppUpdateCoordinator(private val activity: AppCompatActivity) {
                     }
                     showAvailable(result.update)
                 }
-                UpdateCheck.UpToDate -> if (!silent) snack(activity.getString(R.string.update_up_to_date))
+                UpdateCheck.UpToDate -> if (!silent) {
+                    snack(activity.getString(R.string.update_up_to_date, BuildConfig.VERSION_NAME))
+                }
                 UpdateCheck.NoRelease -> if (!silent) snack(activity.getString(R.string.update_no_release))
                 is UpdateCheck.Failed -> if (!silent) {
                     snack(activity.getString(R.string.update_check_failed, result.reason))
