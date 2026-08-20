@@ -41,18 +41,36 @@ echo "Using Android SDK at $sdk_dir"
 
 ./gradlew :app:assembleRelease :app:writeUpdateMetadata
 
-apk="$(ls -1 app/build/outputs/apk/release/*.apk | head -n 1)"
+apk="app/build/outputs/apk/release/app-release.apk"
+meta="app/build/outputs/apk/release/output-metadata.json"
 json="app/build/outputs/apk/release/version.json"
-if [[ ! -f "$apk" || ! -f "$json" ]]; then
-  echo "Release artifacts were not produced." >&2
+if [[ ! -f "$apk" ]]; then
+  echo "没有找到 $apk，打包没有生成安装包。" >&2
   exit 1
 fi
+if [[ ! -f "$meta" ]]; then
+  echo "没有找到 $meta，无法读取版本号。" >&2
+  exit 1
+fi
+
+python3 - "$meta" "$json" <<'PY'
+import json, sys
+from pathlib import Path
+meta = json.loads(Path(sys.argv[1]).read_text())
+el = meta["elements"][0]
+payload = {"versionCode": el["versionCode"], "versionName": el["versionName"]}
+Path(sys.argv[2]).write_text(json.dumps(payload) + "\n")
+print(payload["versionName"], payload["versionCode"])
+PY
 
 version_name="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["versionName"])' "$json")"
 version_code="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["versionCode"])' "$json")"
 tag="v${version_name}"
 named="app/build/outputs/apk/release/a-lite-ssh-${version_name}.apk"
 cp -f "$apk" "$named"
+
+echo "已生成 $named （${version_name} / ${version_code}）"
+echo "正在上传到 GitHub Releases…"
 
 notes_file="$(mktemp)"
 trap 'rm -f "$notes_file"' EXIT
@@ -62,11 +80,17 @@ else
   printf 'A-Lite SSH %s\n' "$version_name" > "$notes_file"
 fi
 
-gh release create "$tag" \
-  --title "${version_name} (${version_code})" \
-  --notes-file "$notes_file" \
-  "$named" \
-  "$json"
+if gh release view "$tag" >/dev/null 2>&1; then
+  echo "Release $tag 已存在，改为上传安装包。" >&2
+  gh release upload "$tag" "$named" "$json" --clobber
+else
+  gh release create "$tag" \
+    --title "${version_name} (${version_code})" \
+    --notes-file "$notes_file" \
+    "$named" \
+    "$json"
+fi
 
-echo "Published $tag"
-echo "Install this APK once on the phone, then later versions can update in-app."
+echo "发布完成：$tag"
+echo "打开查看：https://github.com/PhilCoulson/a-lite-ssh/releases/tag/${tag}"
+echo "手机请先卸载旧的 debug 包，再安装这个 Release 里的 APK。之后即可应用内更新。"

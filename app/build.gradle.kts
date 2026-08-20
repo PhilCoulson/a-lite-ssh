@@ -108,6 +108,7 @@ android {
 tasks.register("writeUpdateMetadata") {
     val json = layout.buildDirectory.file("outputs/apk/release/version.json")
     outputs.file(json)
+    outputs.upToDateWhen { false }
     doLast {
         val file = json.get().asFile
         file.parentFile.mkdirs()
