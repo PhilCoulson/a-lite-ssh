@@ -44,7 +44,7 @@
                     android:layout_marginStart="6dp"
                     android:textAppearance="@style/TextAppearance.Material3.LabelSmall"
                     android:textColor="@color/on_surface_variant"
-                    tools:text="1.2.3" />
+                    tools:text="1.2.4" />
             </LinearLayout>
         </com.google.android.material.appbar.MaterialToolbar>
     </com.google.android.material.appbar.AppBarLayout>
