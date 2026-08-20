@@ -12,15 +12,23 @@ import androidx.core.content.edit
 import androidx.lifecycle.lifecycleScope
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
+import java.net.HttpURLConnection
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicReference
 
 class AppUpdateCoordinator(private val activity: AppCompatActivity) {
     private val prefs = activity.getSharedPreferences(PREFS, AppCompatActivity.MODE_PRIVATE)
     private var pending: AppUpdate? = null
     private var checking = false
+    private var interactiveCheck = false
+    private var checkCancelled = false
+    private var downloadJob: Job? = null
+    private var checkDialog: AlertDialog? = null
+    private var downloadDialog: AlertDialog? = null
 
     fun checkIfDue() {
         val last = prefs.getLong(KEY_LAST_CHECK, 0L)
@@ -34,11 +42,21 @@ class AppUpdateCoordinator(private val activity: AppCompatActivity) {
         check(silent = false)
     }
 
-    fun onResume() {
+    fun onHostFocused() {
         val update = pending ?: return
-        if (activity.packageManager.canRequestPackageInstalls()) {
-            pending = null
-            TunnelHub.appendUpdateLog("已获得安装未知应用权限，继续更新")
+        if (!activity.packageManager.canRequestPackageInstalls()) {
+            return
+        }
+        if (downloadJob?.isActive == true) {
+            return
+        }
+        pending = null
+        TunnelHub.appendUpdateLog("已获得安装未知应用权限，继续更新")
+        activity.window.decorView.post {
+            if (!alive()) {
+                pending = update
+                return@post
+            }
             prepareDownload(update)
         }
     }
@@ -46,57 +64,107 @@ class AppUpdateCoordinator(private val activity: AppCompatActivity) {
     private fun check(silent: Boolean) {
         if (checking) {
             if (!silent) {
-                snack(activity.getString(R.string.update_checking))
+                interactiveCheck = true
+                checkCancelled = false
+                showCheckingDialog()
             }
             return
         }
         checking = true
-        TunnelHub.appendUpdateLog(if (silent) "自动检查更新" else "手动检查更新")
+        interactiveCheck = !silent
+        checkCancelled = false
         if (!silent) {
-            snack(activity.getString(R.string.update_checking))
+            showCheckingDialog()
         }
+        TunnelHub.appendUpdateLog(if (interactiveCheck) "手动检查更新" else "自动检查更新")
         activity.lifecycleScope.launch {
             val result = withContext(Dispatchers.IO) { AppUpdateClient.fetchLatest() }
             checking = false
             prefs.edit { putLong(KEY_LAST_CHECK, System.currentTimeMillis()) }
-            when (result) {
-                is UpdateCheck.Available -> {
-                    TunnelHub.appendUpdateLog(
-                        "发现新版本 ${result.update.versionName}（${result.update.versionCode}），当前 ${BuildConfig.VERSION_NAME}",
-                    )
-                    val snoozed = prefs.getInt(KEY_SNOOZED, 0)
-                    if (silent && snoozed == result.update.versionCode) {
-                        TunnelHub.appendUpdateLog("该版本已选择稍后")
-                        return@launch
-                    }
-                    showAvailable(result.update)
+            val showUi = interactiveCheck && !checkCancelled
+            interactiveCheck = false
+            dismissCheckingDialog()
+            if (checkCancelled) {
+                logCheckResult(result)
+                return@launch
+            }
+            if (!showUi) {
+                handleSilentResult(result)
+                return@launch
+            }
+            presentCheckResult(result)
+        }
+    }
+
+    private fun logCheckResult(result: UpdateCheck) {
+        when (result) {
+            is UpdateCheck.Available -> TunnelHub.appendUpdateLog(
+                "发现新版本 ${result.update.versionName}（${result.update.versionCode}），当前 ${BuildConfig.VERSION_NAME}",
+            )
+            UpdateCheck.UpToDate -> TunnelHub.appendUpdateLog("已是最新版本 ${BuildConfig.VERSION_NAME}")
+            UpdateCheck.NoRelease -> TunnelHub.appendUpdateLog("GitHub 上没有带 APK 的 Release")
+            is UpdateCheck.Failed -> TunnelHub.appendUpdateLog("检查失败：${result.reason}")
+        }
+    }
+
+    private fun handleSilentResult(result: UpdateCheck) {
+        when (result) {
+            is UpdateCheck.Available -> {
+                TunnelHub.appendUpdateLog(
+                    "发现新版本 ${result.update.versionName}（${result.update.versionCode}），当前 ${BuildConfig.VERSION_NAME}",
+                )
+                val snoozed = prefs.getInt(KEY_SNOOZED, 0)
+                if (snoozed == result.update.versionCode) {
+                    TunnelHub.appendUpdateLog("该版本已选择稍后")
+                    return
                 }
-                UpdateCheck.UpToDate -> {
-                    TunnelHub.appendUpdateLog("已是最新版本 ${BuildConfig.VERSION_NAME}")
-                    if (!silent) {
-                        snack(activity.getString(R.string.update_up_to_date, BuildConfig.VERSION_NAME))
-                    }
+                showAvailable(result.update)
+            }
+            UpdateCheck.UpToDate -> {
+                TunnelHub.appendUpdateLog("已是最新版本 ${BuildConfig.VERSION_NAME}")
+            }
+            UpdateCheck.NoRelease -> {
+                TunnelHub.appendUpdateLog("GitHub 上没有带 APK 的 Release")
+            }
+            is UpdateCheck.Failed -> {
+                TunnelHub.appendUpdateLog("检查失败：${result.reason}")
+            }
+        }
+    }
+
+    private fun presentCheckResult(result: UpdateCheck) {
+        if (!alive()) {
+            return
+        }
+        when (result) {
+            is UpdateCheck.Available -> {
+                logCheckResult(result)
+                showAvailable(result.update)
+            }
+            UpdateCheck.UpToDate -> {
+                logCheckResult(result)
+                showPlainMessage(activity.getString(R.string.update_up_to_date, BuildConfig.VERSION_NAME))
+            }
+            UpdateCheck.NoRelease -> {
+                logCheckResult(result)
+                showPlainMessage(activity.getString(R.string.update_no_release))
+            }
+            is UpdateCheck.Failed -> {
+                logCheckResult(result)
+                val text = if (result.reason == AppUpdateClient.PRIVATE_OR_MISSING) {
+                    activity.getString(R.string.update_private_repo)
+                } else {
+                    activity.getString(R.string.update_check_failed, result.reason)
                 }
-                UpdateCheck.NoRelease -> {
-                    TunnelHub.appendUpdateLog("GitHub 上没有带 APK 的 Release")
-                    if (!silent) snack(activity.getString(R.string.update_no_release))
-                }
-                is UpdateCheck.Failed -> {
-                    TunnelHub.appendUpdateLog("检查失败：${result.reason}")
-                    if (!silent) {
-                        val text = if (result.reason == AppUpdateClient.PRIVATE_OR_MISSING) {
-                            activity.getString(R.string.update_private_repo)
-                        } else {
-                            activity.getString(R.string.update_check_failed, result.reason)
-                        }
-                        snack(text)
-                    }
-                }
+                showPlainMessage(text)
             }
         }
     }
 
     private fun showAvailable(update: AppUpdate) {
+        if (!alive()) {
+            return
+        }
         val notes = update.notes.ifBlank { activity.getString(R.string.update_no_notes) }
         MaterialAlertDialogBuilder(activity)
             .setTitle(activity.getString(R.string.update_available_title, update.versionName))
@@ -146,6 +214,9 @@ class AppUpdateCoordinator(private val activity: AppCompatActivity) {
     }
 
     private fun prepareDownload(update: AppUpdate) {
+        if (downloadJob?.isActive == true) {
+            return
+        }
         val dest = apkFile()
         if (dest.isFile && AppUpdateInstaller.verify(activity, dest) == null) {
             TunnelHub.appendUpdateLog("已有完整安装包，跳过下载")
@@ -176,7 +247,12 @@ class AppUpdateCoordinator(private val activity: AppCompatActivity) {
     }
 
     private fun downloadAndInstall(update: AppUpdate, resume: Boolean) {
+        if (downloadJob?.isActive == true) {
+            return
+        }
         val cancelled = AtomicBoolean(false)
+        val finished = AtomicBoolean(false)
+        val connection = AtomicReference<HttpURLConnection?>(null)
         val view = LayoutInflater.from(activity).inflate(R.layout.dialog_update_progress, null, false)
         val status = view.findViewById<TextView>(R.id.updateProgressStatus)
         val bar = view.findViewById<ProgressBar>(R.id.updateProgressBar)
@@ -184,22 +260,42 @@ class AppUpdateCoordinator(private val activity: AppCompatActivity) {
         val dialog = MaterialAlertDialogBuilder(activity)
             .setTitle(R.string.update_downloading_title)
             .setView(view)
-            .setNegativeButton(R.string.action_cancel) { _, _ -> cancelled.set(true) }
-            .setCancelable(false)
+            .setNegativeButton(R.string.action_cancel, null)
+            .setCancelable(true)
             .create()
+        dialog.setCanceledOnTouchOutside(false)
         dialog.setOnShowListener {
             dialog.getButton(AlertDialog.BUTTON_NEGATIVE).setOnClickListener {
-                cancelled.set(true)
-                status.setText(R.string.update_cancelling)
+                abortDownload(cancelled, connection)
+                dismissDownloadDialog()
             }
         }
+        dialog.setOnCancelListener {
+            abortDownload(cancelled, connection)
+        }
+        dialog.setOnDismissListener {
+            downloadDialog = null
+            if (!finished.get()) {
+                abortDownload(cancelled, connection)
+            }
+        }
+        downloadDialog = dialog
         dialog.show()
-        activity.lifecycleScope.launch {
+        downloadJob = activity.lifecycleScope.launch {
             val apk = apkFile()
             try {
                 withContext(Dispatchers.IO) {
-                    AppUpdateClient.download(update, apk, resume, cancelled::get) { pct ->
+                    AppUpdateClient.download(
+                        update = update,
+                        dest = apk,
+                        resume = resume,
+                        cancelled = cancelled::get,
+                        onConnection = { connection.set(it) },
+                    ) { pct ->
                         activity.runOnUiThread {
+                            if (downloadDialog !== dialog || !dialog.isShowing) {
+                                return@runOnUiThread
+                            }
                             bar.isIndeterminate = false
                             bar.progress = pct
                             status.text = activity.getString(R.string.update_downloading_pct, pct)
@@ -208,35 +304,58 @@ class AppUpdateCoordinator(private val activity: AppCompatActivity) {
                 }
                 if (cancelled.get()) {
                     TunnelHub.appendUpdateLog("下载已暂停，下次可继续")
-                    snack(activity.getString(R.string.update_cancelling))
                     return@launch
                 }
-                status.setText(R.string.update_verifying)
+                if (dialog.isShowing) {
+                    status.setText(R.string.update_verifying)
+                }
                 TunnelHub.appendUpdateLog("正在校验安装包")
                 val error = withContext(Dispatchers.IO) { AppUpdateInstaller.verify(activity, apk) }
+                if (cancelled.get()) {
+                    TunnelHub.appendUpdateLog("下载已暂停，下次可继续")
+                    return@launch
+                }
                 if (error != null) {
                     TunnelHub.appendUpdateLog("校验失败：$error")
+                    finished.set(true)
+                    dismissDownloadDialog()
                     snack(error)
                     return@launch
                 }
                 TunnelHub.appendUpdateLog("校验通过")
-                if (dialog.isShowing) {
-                    dialog.dismiss()
-                }
+                finished.set(true)
+                dismissDownloadDialog()
                 startInstall(apk)
-                return@launch
             } catch (_: UpdateCancelled) {
                 TunnelHub.appendUpdateLog("下载已暂停，进度已保留")
             } catch (e: Exception) {
+                if (cancelled.get()) {
+                    TunnelHub.appendUpdateLog("下载已暂停，进度已保留")
+                    return@launch
+                }
                 TunnelHub.appendUpdateLog("下载失败：${e.message ?: e.javaClass.simpleName}")
-                if (!cancelled.get()) {
-                    snack(activity.getString(R.string.update_download_failed, e.message ?: e.javaClass.simpleName))
-                }
+                finished.set(true)
+                dismissDownloadDialog()
+                snack(activity.getString(R.string.update_download_failed, e.message ?: e.javaClass.simpleName))
             } finally {
-                if (dialog.isShowing) {
-                    dialog.dismiss()
-                }
+                finished.set(true)
+                connection.set(null)
+                dismissDownloadDialog()
             }
+        }
+    }
+
+    private fun abortDownload(
+        cancelled: AtomicBoolean,
+        connection: AtomicReference<HttpURLConnection?>,
+    ) {
+        if (cancelled.getAndSet(true)) {
+            return
+        }
+        TunnelHub.appendUpdateLog("用户取消下载")
+        try {
+            connection.get()?.disconnect()
+        } catch (_: Exception) {
         }
     }
 
@@ -250,7 +369,63 @@ class AppUpdateCoordinator(private val activity: AppCompatActivity) {
         }
     }
 
+    private fun showCheckingDialog() {
+        if (checkDialog?.isShowing == true) {
+            return
+        }
+        val view = LayoutInflater.from(activity).inflate(R.layout.dialog_update_status, null, false)
+        view.findViewById<TextView>(R.id.updateStatusText).setText(R.string.update_checking)
+        checkDialog = MaterialAlertDialogBuilder(activity)
+            .setTitle(R.string.update_check_title)
+            .setView(view)
+            .setNegativeButton(R.string.action_cancel) { _, _ ->
+                checkCancelled = true
+                interactiveCheck = false
+                TunnelHub.appendUpdateLog("用户取消检查更新")
+            }
+            .setCancelable(true)
+            .setOnCancelListener {
+                checkCancelled = true
+                interactiveCheck = false
+                TunnelHub.appendUpdateLog("用户取消检查更新")
+            }
+            .show()
+    }
+
+    private fun showPlainMessage(message: String) {
+        if (!alive()) {
+            return
+        }
+        MaterialAlertDialogBuilder(activity)
+            .setTitle(R.string.update_check_title)
+            .setMessage(message)
+            .setPositiveButton(R.string.action_ok, null)
+            .show()
+    }
+
+    private fun dismissCheckingDialog() {
+        checkDialog?.let { dialog ->
+            dialog.setOnDismissListener(null)
+            if (dialog.isShowing) {
+                dialog.dismiss()
+            }
+        }
+        checkDialog = null
+    }
+
+    private fun dismissDownloadDialog() {
+        downloadDialog?.let { dialog ->
+            dialog.setOnDismissListener(null)
+            if (dialog.isShowing) {
+                dialog.dismiss()
+            }
+        }
+        downloadDialog = null
+    }
+
     private fun apkFile(): File = File(activity.cacheDir, "updates/a-lite-ssh-update.apk")
+
+    private fun alive(): Boolean = !activity.isFinishing && !activity.isDestroyed
 
     private fun snack(message: String) {
         val anchor = activity.findViewById<android.view.View>(R.id.coordinator)

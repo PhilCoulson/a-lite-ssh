@@ -105,6 +105,7 @@ object AppUpdateClient {
         dest: File,
         resume: Boolean,
         cancelled: () -> Boolean,
+        onConnection: (HttpURLConnection) -> Unit = {},
         onProgress: (Int) -> Unit,
     ) {
         if (!isAllowedUrl(update.apkUrl)) {
@@ -130,15 +131,40 @@ object AppUpdateClient {
         } else {
             TunnelHub.appendUpdateLog("开始下载 ${update.versionName}")
         }
-        val conn = open(update.apkUrl, acceptJson = false, readTimeoutMs = 300_000, extraHeaders = headers)
+        val conn = open(
+            update.apkUrl,
+            acceptJson = false,
+            readTimeoutMs = 300_000,
+            extraHeaders = headers,
+            cancelled = cancelled,
+            onConnection = onConnection,
+        )
         try {
-            val code = conn.responseCode
+            if (cancelled()) {
+                throw UpdateCancelled()
+            }
+            val code = try {
+                conn.responseCode
+            } catch (e: Exception) {
+                if (cancelled()) throw UpdateCancelled()
+                throw e
+            }
+            if (cancelled()) {
+                throw UpdateCancelled()
+            }
             if (offset > 0L && code == HttpURLConnection.HTTP_OK) {
                 TunnelHub.appendUpdateLog("服务器不支持续传，改为重新下载")
                 conn.disconnect()
                 clearPartial(dest)
                 offset = 0L
-                download(update, dest, resume = false, cancelled = cancelled, onProgress = onProgress)
+                download(
+                    update,
+                    dest,
+                    resume = false,
+                    cancelled = cancelled,
+                    onConnection = onConnection,
+                    onProgress = onProgress,
+                )
                 return
             }
             if (offset > 0L && code != 206) {
@@ -160,7 +186,12 @@ object AppUpdateClient {
                             output.flush()
                             throw UpdateCancelled()
                         }
-                        val n = input.read(buf)
+                        val n = try {
+                            input.read(buf)
+                        } catch (e: Exception) {
+                            if (cancelled()) throw UpdateCancelled()
+                            throw e
+                        }
                         if (n < 0) {
                             break
                         }
@@ -225,9 +256,14 @@ object AppUpdateClient {
         acceptJson: Boolean,
         readTimeoutMs: Int = 60_000,
         extraHeaders: Map<String, String> = emptyMap(),
+        cancelled: () -> Boolean = { false },
+        onConnection: (HttpURLConnection) -> Unit = {},
     ): HttpURLConnection {
         var current = url
         repeat(8) {
+            if (cancelled()) {
+                throw UpdateCancelled()
+            }
             if (!isAllowedUrl(current)) {
                 throw IllegalStateException("更新地址不受信任")
             }
@@ -240,7 +276,18 @@ object AppUpdateClient {
             if (acceptJson) {
                 conn.setRequestProperty("Accept", "application/vnd.github+json")
             }
-            val code = conn.responseCode
+            onConnection(conn)
+            val code = try {
+                conn.responseCode
+            } catch (e: Exception) {
+                conn.disconnect()
+                if (cancelled()) throw UpdateCancelled()
+                throw e
+            }
+            if (cancelled()) {
+                conn.disconnect()
+                throw UpdateCancelled()
+            }
             if (code in REDIRECTS) {
                 val next = conn.getHeaderField("Location") ?: throw IllegalStateException("重定向缺少地址")
                 conn.disconnect()

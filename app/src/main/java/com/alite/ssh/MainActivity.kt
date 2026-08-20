@@ -115,10 +115,10 @@ class MainActivity : AppCompatActivity(), TunnelHub.Observer {
         TunnelHub.addObserver(this)
     }
 
-    override fun onResume() {
-        super.onResume()
-        if (::appUpdates.isInitialized) {
-            appUpdates.onResume()
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        if (hasFocus && ::appUpdates.isInitialized) {
+            appUpdates.onHostFocused()
         }
     }
 
