@@ -77,32 +77,87 @@ object AppUpdateClient {
     }
     }
 
-    fun download(update: AppUpdate, dest: File, cancelled: () -> Boolean, onProgress: (Int) -> Unit) {
+    fun partialFile(dest: File): File = File(dest.parentFile, dest.name + ".part")
+
+    fun canResume(update: AppUpdate, dest: File): Boolean {
+        val part = partialFile(dest)
+        val meta = readMeta(dest) ?: return false
+        if (!part.isFile || part.length() <= 0L) {
+            return false
+        }
+        if (meta.versionCode != update.versionCode || meta.url != update.apkUrl) {
+            return false
+        }
+        val expected = update.apkSize.takeIf { it > 0 } ?: meta.size
+        return expected <= 0L || part.length() < expected
+    }
+
+    fun clearPartial(dest: File) {
+        partialFile(dest).delete()
+        metaFile(dest).delete()
+        if (dest.exists()) {
+            dest.delete()
+        }
+    }
+
+    fun download(
+        update: AppUpdate,
+        dest: File,
+        resume: Boolean,
+        cancelled: () -> Boolean,
+        onProgress: (Int) -> Unit,
+    ) {
         if (!isAllowedUrl(update.apkUrl)) {
             throw IllegalStateException("更新地址不受信任")
         }
         dest.parentFile?.mkdirs()
-        if (dest.exists()) {
-            dest.delete()
+        val tmp = partialFile(dest)
+        if (!resume) {
+            clearPartial(dest)
         }
-        val tmp = File(dest.parentFile, dest.name + ".part")
-        if (tmp.exists()) {
+        var offset = if (resume && tmp.isFile) tmp.length() else 0L
+        if (offset > 0L && update.apkSize > 0L && offset >= update.apkSize) {
+            tmp.copyTo(dest, overwrite = true)
             tmp.delete()
+            metaFile(dest).delete()
+            onProgress(100)
+            return
         }
-        val conn = open(update.apkUrl, acceptJson = false, readTimeoutMs = 300_000)
+        val headers = linkedMapOf<String, String>()
+        if (offset > 0L) {
+            headers["Range"] = "bytes=$offset-"
+            TunnelHub.appendUpdateLog("断点续传，已有 ${offset / 1024} KB")
+        } else {
+            TunnelHub.appendUpdateLog("开始下载 ${update.versionName}")
+        }
+        val conn = open(update.apkUrl, acceptJson = false, readTimeoutMs = 300_000, extraHeaders = headers)
         try {
             val code = conn.responseCode
-            if (code !in 200..299) {
+            if (offset > 0L && code == HttpURLConnection.HTTP_OK) {
+                TunnelHub.appendUpdateLog("服务器不支持续传，改为重新下载")
+                conn.disconnect()
+                clearPartial(dest)
+                offset = 0L
+                download(update, dest, resume = false, cancelled = cancelled, onProgress = onProgress)
+                return
+            }
+            if (offset > 0L && code != 206) {
+                throw IllegalStateException("续传失败 HTTP $code")
+            }
+            if (offset == 0L && code !in 200..299) {
                 throw IllegalStateException("下载失败 HTTP $code")
             }
-            val total = conn.contentLengthLong.takeIf { it > 0 } ?: update.apkSize
+            val total = parseTotalBytes(conn, update.apkSize, offset)
+            writeMeta(dest, update, total)
+            val append = offset > 0L && code == 206
             conn.inputStream.use { input ->
-                FileOutputStream(tmp).use { output ->
+                FileOutputStream(tmp, append).use { output ->
                     val buf = ByteArray(16 * 1024)
-                    var read = 0L
-                    var lastPct = -1
+                    var read = offset
+                    var lastLogged = -1
                     while (true) {
                         if (cancelled()) {
+                            output.flush()
                             throw UpdateCancelled()
                         }
                         val n = input.read(buf)
@@ -112,19 +167,26 @@ object AppUpdateClient {
                         output.write(buf, 0, n)
                         read += n
                         val pct = if (total > 0) ((read * 100) / total).toInt().coerceIn(0, 100) else 0
-                        if (pct != lastPct) {
-                            lastPct = pct
-                            onProgress(pct)
+                        onProgress(pct)
+                        val bucket = pct / 25 * 25
+                        if (bucket != lastLogged && bucket in setOf(25, 50, 75, 100)) {
+                            lastLogged = bucket
+                            TunnelHub.appendUpdateLog("下载进度 $bucket%")
                         }
                     }
                     output.flush()
                 }
             }
+            if (total > 0L && tmp.length() < total) {
+                throw IllegalStateException("下载不完整（${tmp.length()}/$total）")
+            }
             if (!tmp.renameTo(dest)) {
                 tmp.copyTo(dest, overwrite = true)
                 tmp.delete()
             }
+            metaFile(dest).delete()
             onProgress(100)
+            TunnelHub.appendUpdateLog("下载完成 ${dest.length() / 1024} KB")
         } finally {
             conn.disconnect()
         }
@@ -158,7 +220,12 @@ object AppUpdateClient {
         }
     }
 
-    private fun open(url: String, acceptJson: Boolean, readTimeoutMs: Int = 60_000): HttpURLConnection {
+    private fun open(
+        url: String,
+        acceptJson: Boolean,
+        readTimeoutMs: Int = 60_000,
+        extraHeaders: Map<String, String> = emptyMap(),
+    ): HttpURLConnection {
         var current = url
         repeat(8) {
             if (!isAllowedUrl(current)) {
@@ -169,6 +236,7 @@ object AppUpdateClient {
             conn.connectTimeout = 15_000
             conn.readTimeout = readTimeoutMs
             conn.setRequestProperty("User-Agent", "A-Lite-SSH/${BuildConfig.VERSION_NAME}")
+            extraHeaders.forEach { (key, value) -> conn.setRequestProperty(key, value) }
             if (acceptJson) {
                 conn.setRequestProperty("Accept", "application/vnd.github+json")
             }
@@ -215,4 +283,46 @@ object AppUpdateClient {
     )
 
     const val PRIVATE_OR_MISSING = "REPO_PRIVATE"
+
+    private fun metaFile(dest: File): File = File(dest.parentFile, dest.name + ".meta")
+
+    private data class PartialMeta(val versionCode: Int, val url: String, val size: Long)
+
+    private fun writeMeta(dest: File, update: AppUpdate, size: Long) {
+        metaFile(dest).writeText(
+            "versionCode=${update.versionCode}\nurl=${update.apkUrl}\nsize=$size\n",
+        )
+    }
+
+    private fun readMeta(dest: File): PartialMeta? {
+        val file = metaFile(dest)
+        if (!file.isFile) {
+            return null
+        }
+        val values = file.readLines().mapNotNull { line ->
+            val idx = line.indexOf('=')
+            if (idx <= 0) null else line.substring(0, idx) to line.substring(idx + 1)
+        }.toMap()
+        val code = values["versionCode"]?.toIntOrNull() ?: return null
+        val url = values["url"] ?: return null
+        val size = values["size"]?.toLongOrNull() ?: 0L
+        return PartialMeta(code, url, size)
+    }
+
+    private fun parseTotalBytes(conn: HttpURLConnection, declared: Long, offset: Long): Long {
+        val range = conn.getHeaderField("Content-Range")
+        if (!range.isNullOrBlank()) {
+            val total = range.substringAfterLast('/', "").toLongOrNull()
+            if (total != null && total > 0L) {
+                return total
+            }
+        }
+        val remaining = conn.contentLengthLong
+        return when {
+            declared > 0L -> declared
+            remaining > 0L && offset > 0L -> offset + remaining
+            remaining > 0L -> remaining
+            else -> 0L
+        }
+    }
 }
