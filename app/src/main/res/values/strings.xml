@@ -44,7 +44,8 @@
     <string name="action_check_update">检查更新</string>
     <string name="update_checking">正在检查更新…</string>
     <string name="update_up_to_date">已是最新版本 %1$s</string>
-    <string name="update_no_release">还没有 GitHub Release 安装包。发布后即可应用内更新。</string>
+    <string name="update_no_release">GitHub 上还没有带 APK 的 Release。</string>
+    <string name="update_private_repo">仓库当前是私有的，手机无法匿名下载安装包。请在 GitHub 将该仓库设为 Public 后再检查更新。</string>
     <string name="update_check_failed">检查更新失败：%1$s</string>
     <string name="update_available_title">发现新版本 %1$s</string>
     <string name="update_available_body">最新 %1$s，当前 %2$s。\n\n%3$s</string>

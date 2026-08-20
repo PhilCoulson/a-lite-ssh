@@ -28,7 +28,6 @@ object AppUpdateClient {
     fun fetchLatest(): UpdateCheck {
         return try {
         val raw = httpGet(BuildConfig.UPDATE_API_URL, acceptJson = true)
-            ?: return UpdateCheck.NoRelease
         val root = JSONObject(raw)
         val assets = root.optJSONArray("assets")
             ?: return UpdateCheck.NoRelease
@@ -143,12 +142,12 @@ object AppUpdateClient {
         return null
     }
 
-    private fun httpGet(url: String, acceptJson: Boolean): String? {
+    private fun httpGet(url: String, acceptJson: Boolean): String {
         val conn = open(url, acceptJson = acceptJson, readTimeoutMs = 20_000)
         try {
             val code = conn.responseCode
             if (code == HttpURLConnection.HTTP_NOT_FOUND) {
-                return null
+                throw IllegalStateException(PRIVATE_OR_MISSING)
             }
             if (code !in 200..299) {
                 throw IllegalStateException("HTTP $code")
@@ -214,4 +213,6 @@ object AppUpdateClient {
         "release-assets.githubusercontent.com",
         "github-releases.githubusercontent.com",
     )
+
+    const val PRIVATE_OR_MISSING = "REPO_PRIVATE"
 }

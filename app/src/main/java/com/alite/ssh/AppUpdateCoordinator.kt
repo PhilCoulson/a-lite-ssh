@@ -71,7 +71,12 @@ class AppUpdateCoordinator(private val activity: AppCompatActivity) {
                 }
                 UpdateCheck.NoRelease -> if (!silent) snack(activity.getString(R.string.update_no_release))
                 is UpdateCheck.Failed -> if (!silent) {
-                    snack(activity.getString(R.string.update_check_failed, result.reason))
+                    val text = if (result.reason == AppUpdateClient.PRIVATE_OR_MISSING) {
+                        activity.getString(R.string.update_private_repo)
+                    } else {
+                        activity.getString(R.string.update_check_failed, result.reason)
+                    }
+                    snack(text)
                 }
             }
         }

@@ -88,9 +88,11 @@ export ANDROID_HOME="$HOME/Android/Sdk"   # 改成你实际的 SDK 路径
 ./scripts/publish-github-release.sh
 ```
 
+应用内更新要求仓库是 **Public**。Private 仓库在未登录时接口一律 404，手机里的应用没有 GitHub 账号，会以为没有发布包。
+
 脚本会编译、把 APK 传到  
 https://github.com/PhilCoulson/a-lite-ssh/releases  
-到该页面把 `a-lite-ssh-1.2.0.apk` 下到手机，**先卸载旧的 debug 版**，再安装这个包。
+到该页面把 APK 下到手机，**先卸载旧的 debug 版**，再安装这个包。
 
 ### 以后每发一个新版本
 
