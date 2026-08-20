@@ -65,7 +65,8 @@ class MainActivity : AppCompatActivity(), TunnelHub.Observer {
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
         setSupportActionBar(binding.toolbar)
-        binding.toolbar.subtitle = BuildConfig.VERSION_NAME
+        supportActionBar?.setDisplayShowTitleEnabled(false)
+        binding.toolbarVersion.text = BuildConfig.VERSION_NAME
         applyWindowInsets()
         secretStore = SecretStore(this)
         appUpdates = AppUpdateCoordinator(this)
