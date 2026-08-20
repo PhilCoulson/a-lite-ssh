@@ -8,7 +8,7 @@
     <string name="auth_key">私钥</string>
     <string name="password">密码</string>
     <string name="remember_password">记住密码</string>
-    <string name="remember_password_helper">最长 7 天</string>
+    <string name="remember_password_helper">（最长 7 天）</string>
     <string name="msg_password_expired">密码记忆已到期，请重新输入</string>
     <string name="private_key">PEM 私钥</string>
     <string name="passphrase">私钥口令（可选）</string>

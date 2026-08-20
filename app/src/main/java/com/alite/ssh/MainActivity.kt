@@ -37,7 +37,6 @@ import com.alite.ssh.databinding.SheetLogsBinding
 import com.google.android.material.bottomsheet.BottomSheetBehavior
 import com.google.android.material.bottomsheet.BottomSheetDialog
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
-import com.google.android.material.snackbar.Snackbar
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -633,15 +632,11 @@ class MainActivity : AppCompatActivity(), TunnelHub.Observer {
     }
 
     private fun snack(message: Int, action: Int? = null, onAction: (() -> Unit)? = null) {
-        val bar = Snackbar.make(binding.coordinator, message, Snackbar.LENGTH_LONG)
-        if (action != null && onAction != null) {
-            bar.setAction(action) { onAction() }
-        }
-        bar.show()
+        snack(getString(message), action, onAction)
     }
 
-    private fun snack(message: String) {
-        Snackbar.make(binding.coordinator, message, Snackbar.LENGTH_LONG).show()
+    private fun snack(message: String, action: Int? = null, onAction: (() -> Unit)? = null) {
+        showCenteredSnackbar(binding.coordinator, message, action, onAction)
     }
 
     private fun requestNotificationPermission() {

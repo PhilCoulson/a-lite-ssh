@@ -11,7 +11,6 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.edit
 import androidx.lifecycle.lifecycleScope
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
-import com.google.android.material.snackbar.Snackbar
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -256,7 +255,7 @@ class AppUpdateCoordinator(private val activity: AppCompatActivity) {
     private fun snack(message: String) {
         val anchor = activity.findViewById<android.view.View>(R.id.coordinator)
             ?: activity.findViewById(android.R.id.content)
-        Snackbar.make(anchor, message, Snackbar.LENGTH_LONG).show()
+        showCenteredSnackbar(anchor, message)
     }
 
     companion object {
