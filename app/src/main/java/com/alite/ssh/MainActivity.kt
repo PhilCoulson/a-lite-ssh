@@ -45,6 +45,7 @@ import java.util.UUID
 
 class MainActivity : AppCompatActivity(), TunnelHub.Observer {
     private lateinit var binding: ActivityMainBinding
+    private lateinit var secretStore: SecretStore
     private val mappings = mutableListOf<PortMapping>()
     private val timeFmt = SimpleDateFormat("HH:mm:ss", Locale.getDefault())
     private val notifyPermission = registerForActivityResult(
@@ -64,12 +65,19 @@ class MainActivity : AppCompatActivity(), TunnelHub.Observer {
         setContentView(binding.root)
         setSupportActionBar(binding.toolbar)
         applyWindowInsets()
+        secretStore = SecretStore(this)
         restoreForm()
         updateAuthFields()
         renderMappings()
         applyStatus(TunnelHub.snapshot())
 
         binding.authGroup.addOnButtonCheckedListener { _, _, _ -> updateAuthFields() }
+        binding.rememberPasswordCheck.setOnCheckedChangeListener { _, checked ->
+            if (!checked) {
+                secretStore.clearPassword()
+            }
+            prefs().edit { putBoolean(KEY_REMEMBER_PASSWORD, checked) }
+        }
         binding.connectButton.setOnClickListener { toggleTunnel() }
         binding.addMappingButton.setOnClickListener { showMappingDialog() }
         requestNotificationPermission()
@@ -128,6 +136,7 @@ class MainActivity : AppCompatActivity(), TunnelHub.Observer {
         }
         val config = readForm() ?: return
         persistForm()
+        persistPassword(config)
         TunnelHub.config = config
         TunnelHub.resetLogs()
         TunnelHub.appendLog("${timeFmt.format(Date())} 开始连接")
@@ -189,6 +198,18 @@ class MainActivity : AppCompatActivity(), TunnelHub.Observer {
             putString(KEY_MAPPINGS, encodeMappings(mappings))
             putBoolean(KEY_TOFU, trustOnFirstUse)
             putBoolean(KEY_SKIP, ignoreHostKeyMismatch)
+            putBoolean(KEY_REMEMBER_PASSWORD, binding.rememberPasswordCheck.isChecked)
+        }
+        if (!binding.rememberPasswordCheck.isChecked) {
+            secretStore.clearPassword()
+        }
+    }
+
+    private fun persistPassword(config: TunnelConfig) {
+        if (binding.rememberPasswordCheck.isChecked && !config.password.isNullOrEmpty()) {
+            secretStore.savePassword(config.password)
+        } else if (!binding.rememberPasswordCheck.isChecked) {
+            secretStore.clearPassword()
         }
     }
 
@@ -202,6 +223,18 @@ class MainActivity : AppCompatActivity(), TunnelHub.Observer {
         binding.authGroup.check(
             if (p.getBoolean(KEY_USE_KEY, false)) R.id.authKey else R.id.authPassword,
         )
+        val wantRemember = p.getBoolean(KEY_REMEMBER_PASSWORD, false)
+        binding.rememberPasswordCheck.isChecked = wantRemember
+        if (!wantRemember) {
+            secretStore.clearPassword()
+        } else {
+            when (val memory = secretStore.loadPassword()) {
+                is SecretStore.Memory.Valid -> binding.passwordInput.setText(memory.password)
+                SecretStore.Memory.Expired ->
+                    binding.root.post { snack(R.string.msg_password_expired) }
+                SecretStore.Memory.Empty -> Unit
+            }
+        }
         mappings.clear()
         mappings.addAll(decodeMappings(p.getString(KEY_MAPPINGS, null), p))
     }
@@ -522,6 +555,7 @@ class MainActivity : AppCompatActivity(), TunnelHub.Observer {
         val key = binding.authKey.isChecked
         val hideSecrets = uiPhase(TunnelHub.state) == UiPhase.Connected
         binding.passwordLayout.isVisible = !key && !hideSecrets
+        binding.rememberPasswordRow.isVisible = !key && !hideSecrets
         binding.keyLayout.isVisible = key && !hideSecrets
         binding.passphraseLayout.isVisible = key && !hideSecrets
     }
@@ -531,6 +565,7 @@ class MainActivity : AppCompatActivity(), TunnelHub.Observer {
         binding.portInput.isEnabled = enabled
         binding.userInput.isEnabled = enabled
         binding.passwordInput.isEnabled = enabled
+        binding.rememberPasswordCheck.isEnabled = enabled
         binding.keyInput.isEnabled = enabled
         binding.passphraseInput.isEnabled = enabled
         binding.authPassword.isEnabled = enabled
@@ -606,6 +641,7 @@ class MainActivity : AppCompatActivity(), TunnelHub.Observer {
         private const val KEY_REMOTE_PORT = "remote_port"
         private const val KEY_TOFU = "tofu"
         private const val KEY_SKIP = "skip"
+        private const val KEY_REMEMBER_PASSWORD = "remember_password"
         private const val MAX_MAPPINGS = 16
 
         private fun uiPhase(state: String): UiPhase = when (state) {
