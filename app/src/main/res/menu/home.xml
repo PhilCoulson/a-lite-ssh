@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<menu xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto">
+    <item
+        android:id="@+id/action_logs"
+        android:icon="@drawable/ic_logs"
+        android:title="@string/log_title"
+        app:showAsAction="ifRoom" />
+    <item
+        android:id="@+id/action_advanced"
+        android:icon="@drawable/ic_tune"
+        android:title="@string/advanced_title"
+        app:showAsAction="never" />
+    <item
+        android:id="@+id/action_check_update"
+        android:title="@string/action_check_update"
+        app:showAsAction="never" />
+</menu>
