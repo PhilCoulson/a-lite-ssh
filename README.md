@@ -81,6 +81,13 @@ keyPassword=你的密码
 ./scripts/publish-github-release.sh
 ```
 
+如果提示 `SDK location not found`，是当前终端没找到 Android SDK，不是 GitHub 权限问题。新版脚本会自动探测 SDK 并写入（已 gitignore 的）`local.properties`。本机若仍失败，先安装 Android Studio，或执行：
+
+```bash
+export ANDROID_HOME="$HOME/Android/Sdk"   # 改成你实际的 SDK 路径
+./scripts/publish-github-release.sh
+```
+
 脚本会编译、把 APK 传到  
 https://github.com/PhilCoulson/a-lite-ssh/releases  
 到该页面把 `a-lite-ssh-1.2.0.apk` 下到手机，**先卸载旧的 debug 版**，再安装这个包。
