@@ -37,7 +37,6 @@ import com.alite.ssh.databinding.SheetLogsBinding
 import com.google.android.material.bottomsheet.BottomSheetBehavior
 import com.google.android.material.bottomsheet.BottomSheetDialog
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
-import com.google.android.material.snackbar.Snackbar
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -65,7 +64,8 @@ class MainActivity : AppCompatActivity(), TunnelHub.Observer {
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
         setSupportActionBar(binding.toolbar)
-        binding.toolbar.subtitle = BuildConfig.VERSION_NAME
+        supportActionBar?.setDisplayShowTitleEnabled(false)
+        binding.toolbarVersion.text = BuildConfig.VERSION_NAME
         applyWindowInsets()
         secretStore = SecretStore(this)
         appUpdates = AppUpdateCoordinator(this)
@@ -115,10 +115,10 @@ class MainActivity : AppCompatActivity(), TunnelHub.Observer {
         TunnelHub.addObserver(this)
     }
 
-    override fun onResume() {
-        super.onResume()
-        if (::appUpdates.isInitialized) {
-            appUpdates.onResume()
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        if (hasFocus && ::appUpdates.isInitialized) {
+            appUpdates.onHostFocused()
         }
     }
 
@@ -632,15 +632,11 @@ class MainActivity : AppCompatActivity(), TunnelHub.Observer {
     }
 
     private fun snack(message: Int, action: Int? = null, onAction: (() -> Unit)? = null) {
-        val bar = Snackbar.make(binding.coordinator, message, Snackbar.LENGTH_LONG)
-        if (action != null && onAction != null) {
-            bar.setAction(action) { onAction() }
-        }
-        bar.show()
+        snack(getString(message), action, onAction)
     }
 
-    private fun snack(message: String) {
-        Snackbar.make(binding.coordinator, message, Snackbar.LENGTH_LONG).show()
+    private fun snack(message: String, action: Int? = null, onAction: (() -> Unit)? = null) {
+        showCenteredSnackbar(binding.coordinator, message, action, onAction)
     }
 
     private fun requestNotificationPermission() {

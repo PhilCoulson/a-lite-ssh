@@ -8,7 +8,7 @@
     <string name="auth_key">私钥</string>
     <string name="password">密码</string>
     <string name="remember_password">记住密码</string>
-    <string name="remember_password_helper">最长 7 天</string>
+    <string name="remember_password_helper">（最长 7 天）</string>
     <string name="msg_password_expired">密码记忆已到期，请重新输入</string>
     <string name="private_key">PEM 私钥</string>
     <string name="passphrase">私钥口令（可选）</string>
@@ -42,7 +42,9 @@
     <string name="advanced_title">高级设置</string>
     <string name="current_version">当前版本 %1$s（%2$d）</string>
     <string name="action_check_update">检查更新</string>
+    <string name="action_ok">确定</string>
     <string name="update_checking">正在检查更新…</string>
+    <string name="update_check_title">检查更新</string>
     <string name="update_up_to_date">已是最新版本 %1$s</string>
     <string name="update_no_release">GitHub 上还没有带 APK 的 Release。</string>
     <string name="update_private_repo">仓库当前是私有的，手机无法匿名下载安装包。请在 GitHub 将该仓库设为 Public 后再检查更新。</string>
