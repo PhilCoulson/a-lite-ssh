@@ -52,6 +52,12 @@
     <string name="update_no_notes">无更新说明</string>
     <string name="update_later">稍后</string>
     <string name="update_download">下载安装</string>
+    <string name="update_resume_title">继续上次下载？</string>
+    <string name="update_resume_body">发现未完成的安装包，可以从断点继续，也可以重新下载。</string>
+    <string name="update_resume">继续下载</string>
+    <string name="update_redownload">重新下载</string>
+    <string name="update_install_confirm">请在接下来的系统窗口点「安装」。若一闪而过或提示拒绝，请再试一次，并确认已允许安装未知应用。</string>
+    <string name="update_install_aborted">未允许安装（系统提示用户拒绝）。可再次检查更新，下载进度会保留。</string>
     <string name="update_permission_title">允许安装更新</string>
     <string name="update_permission_body">应用内更新需要允许「安装未知应用」。打开系统设置开启后，再回到这里继续安装。</string>
     <string name="update_permission_go">去设置</string>

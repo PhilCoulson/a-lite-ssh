@@ -44,6 +44,12 @@ object TunnelHub {
         emit()
     }
 
+    fun appendUpdateLog(message: String) {
+        val time = java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.getDefault())
+            .format(java.util.Date())
+        appendLog("$time [更新] $message")
+    }
+
     @Synchronized
     fun snapshot(): Snapshot = Snapshot(state, logBuffer.toList(), config)
 
