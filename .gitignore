@@ -16,3 +16,7 @@ app/build/
 *.log
 *.hprof
 .externalNativeBuild/
+keystore.properties
+release.jks
+*.jks
+*.keystore

@@ -38,6 +38,29 @@ export ANDROID_HOME=/path/to/android-sdk
 
 APK 输出：`app/build/outputs/apk/debug/app-debug.apk`。
 
+## 应用内更新
+
+应用从 [GitHub Releases](https://github.com/PhilCoulson/a-lite-ssh/releases) 检查新版本，确认后下载安装包并调起系统安装。默认每天最多自动检查一次，也可在菜单里手动「检查更新」。
+
+更新能装上的前提是：**手机上现有应用和 Release 里的 APK 用同一把签名密钥**。本地 debug 包和 Release 包密钥不同，会提示签名不一致。做法是：第一次先装 GitHub Release 的包，之后即可在应用里更新。
+
+1. 生成本地发布密钥（只做一次，密钥不要提交到 Git）：
+
+```bash
+./scripts/make-release-keystore.sh
+```
+
+按提示填写 `keystore.properties`。若要用 GitHub Actions 发版，把脚本打印的值加到仓库 Secrets：`RELEASE_KEYSTORE_BASE64`、`RELEASE_STORE_PASSWORD`、`RELEASE_KEY_ALIAS`、`RELEASE_KEY_PASSWORD`。
+
+2. 升 `app/build.gradle.kts` 里的 `appVersionCode` / `appVersionName` 后，任选一种发版方式：
+
+```bash
+# 本机打包并创建 GitHub Release
+./scripts/publish-github-release.sh
+```
+
+或打 tag 交给 CI：`git tag v1.2.0 && git push origin v1.2.0`（tag 必须等于 `v` + versionName）。两种方式不要同时用，以免重复创建 Release。
+
 ## 使用
 
 1. 云端 `sshd` 保持 `AllowTcpForwarding yes`，Web 服务监听云主机本机即可。

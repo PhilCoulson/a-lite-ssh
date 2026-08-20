@@ -65,4 +65,12 @@
             android:textAppearance="@style/TextAppearance.Material3.BodySmall"
             android:textColor="@color/on_surface_variant" />
     </LinearLayout>
+
+    <TextView
+        android:id="@+id/currentVersion"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="12dp"
+        android:textAppearance="@style/TextAppearance.Material3.BodySmall"
+        android:textColor="@color/on_surface_variant" />
 </LinearLayout>

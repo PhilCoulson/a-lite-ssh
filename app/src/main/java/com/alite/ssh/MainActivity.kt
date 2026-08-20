@@ -46,6 +46,7 @@ import java.util.UUID
 class MainActivity : AppCompatActivity(), TunnelHub.Observer {
     private lateinit var binding: ActivityMainBinding
     private lateinit var secretStore: SecretStore
+    private lateinit var appUpdates: AppUpdateCoordinator
     private val mappings = mutableListOf<PortMapping>()
     private val timeFmt = SimpleDateFormat("HH:mm:ss", Locale.getDefault())
     private val notifyPermission = registerForActivityResult(
@@ -66,6 +67,7 @@ class MainActivity : AppCompatActivity(), TunnelHub.Observer {
         setSupportActionBar(binding.toolbar)
         applyWindowInsets()
         secretStore = SecretStore(this)
+        appUpdates = AppUpdateCoordinator(this)
         restoreForm()
         updateAuthFields()
         renderMappings()
@@ -81,6 +83,7 @@ class MainActivity : AppCompatActivity(), TunnelHub.Observer {
         binding.connectButton.setOnClickListener { toggleTunnel() }
         binding.addMappingButton.setOnClickListener { showMappingDialog() }
         requestNotificationPermission()
+        appUpdates.checkIfDue()
     }
 
     override fun onCreateOptionsMenu(menu: Menu): Boolean {
@@ -98,6 +101,10 @@ class MainActivity : AppCompatActivity(), TunnelHub.Observer {
                 showAdvanced()
                 true
             }
+            R.id.action_check_update -> {
+                appUpdates.checkNow()
+                true
+            }
             else -> super.onOptionsItemSelected(item)
         }
     }
@@ -105,6 +112,13 @@ class MainActivity : AppCompatActivity(), TunnelHub.Observer {
     override fun onStart() {
         super.onStart()
         TunnelHub.addObserver(this)
+    }
+
+    override fun onResume() {
+        super.onResume()
+        if (::appUpdates.isInitialized) {
+            appUpdates.onResume()
+        }
     }
 
     override fun onStop() {
@@ -462,6 +476,11 @@ class MainActivity : AppCompatActivity(), TunnelHub.Observer {
         view.skipMismatchSwitch.isChecked = ignoreHostKeyMismatch
         view.tofuSwitch.isEnabled = !connected
         view.skipMismatchSwitch.isEnabled = !connected
+        view.currentVersion.text = getString(
+            R.string.current_version,
+            BuildConfig.VERSION_NAME,
+            BuildConfig.VERSION_CODE,
+        )
         MaterialAlertDialogBuilder(this)
             .setTitle(R.string.advanced_title)
             .setView(view.root)
